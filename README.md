@@ -1,0 +1,2 @@
+# EduCache
+QR Code Hunt
