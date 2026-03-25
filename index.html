@@ -4,21 +4,38 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>QR Code Hunt</title>
+    <meta name="theme-color" content="#1c7ed6" />
     <link rel="stylesheet" href="styles.css" />
+    <script src="hunt-data.js" defer></script>
+    <script src="script.js" defer></script>
   </head>
   <body>
     <main class="page-shell">
       <section class="intro-card">
         <div class="card-top">
           <span class="eyebrow">QR Code Hunt</span>
-          <h1>Build your 10-question treasure trail</h1>
+          <h1>Create a colorful 10-question adventure</h1>
           <p class="lead">
-            Each QR code can point to its own page. When the player enters the
-            correct answer, the clue for the next location appears.
+            Each QR code opens its own page. When the player enters the correct
+            answer, the next clue unlocks instantly on any phone, tablet, or
+            computer.
           </p>
+          <div class="hero-actions">
+            <a class="primary-action" href="q1.html">Start the hunt</a>
+            <button class="secondary-action" type="button" data-reset-progress>
+              Reset saved progress
+            </button>
+          </div>
         </div>
 
         <div class="intro-body">
+          <div class="status-strip">
+            <p class="status-pill" data-progress-summary>
+              Checking saved progress on this device...
+            </p>
+            <p class="status-pill">Responsive for phones, iPads, and desktops</p>
+          </div>
+
           <h2>How to edit your hunt</h2>
           <div class="help-box">
             <p>
@@ -26,6 +43,30 @@
               answer, and clue in one place. Your public QR code pages still
               stay as <strong>q1.html</strong> to <strong>q10.html</strong>.
             </p>
+          </div>
+
+          <div class="feature-grid">
+            <article class="feature-card">
+              <h3>Simple to manage</h3>
+              <p>
+                You only update one file for the questions, accepted answers,
+                and clue text.
+              </p>
+            </article>
+            <article class="feature-card">
+              <h3>Easy for players</h3>
+              <p>
+                Each page is clean, readable, and quick to use on smaller touch
+                screens.
+              </p>
+            </article>
+            <article class="feature-card">
+              <h3>Ready for QR codes</h3>
+              <p>
+                Every question already has its own public page URL for you to
+                print and place.
+              </p>
+            </article>
           </div>
 
           <div class="page-grid">
