@@ -2,6 +2,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const huntData = getHuntData();
 
   setupHomePage(huntData);
+  setupQrGenerator(huntData);
   setupQuestionPage(huntData);
 });
 
@@ -82,29 +83,11 @@ function setupQuestionPage(huntData) {
   const chrome = buildQuestionChrome(questionNumber, huntData.length);
   elements.cardBody.insertBefore(chrome.wrapper, elements.cardBody.firstChild);
 
-  elements.resetButton = chrome.resetButton;
   elements.progressLabel = chrome.progressLabel;
   elements.progressBar = chrome.progressBar;
 
   renderQuestion(currentQuestion, huntData.length, elements);
   syncProgress(elements.progressLabel, elements.progressBar, huntData.length);
-
-  elements.resetButton.addEventListener("click", () => {
-    if (getSolvedCount(huntData) === 0) {
-      return;
-    }
-
-    const shouldReset = window.confirm(
-      "Clear the saved hunt progress on this device?"
-    );
-
-    if (!shouldReset) {
-      return;
-    }
-
-    clearProgress(huntData);
-    window.location.reload();
-  });
 
   if (window.localStorage.getItem(storageKey(questionNumber)) === "solved") {
     markSolved(elements, huntData.length);
@@ -133,24 +116,145 @@ function setupQuestionPage(huntData) {
   });
 }
 
+function setupQrGenerator(huntData) {
+  const modeSelect = document.querySelector("[data-qr-mode]");
+  const questionFields = document.querySelector("[data-qr-question-fields]");
+  const customFields = document.querySelector("[data-qr-custom-fields]");
+  const baseUrlInput = document.querySelector("[data-qr-base-url]");
+  const questionSelect = document.querySelector("[data-qr-question-select]");
+  const customValue = document.querySelector("[data-qr-custom-value]");
+  const sizeSelect = document.querySelector("[data-qr-size]");
+  const generateButton = document.querySelector("[data-generate-qr]");
+  const downloadButton = document.querySelector("[data-download-qr]");
+  const status = document.querySelector("[data-qr-status]");
+  const outputUrl = document.querySelector("[data-qr-output-url]");
+  const preview = document.querySelector("[data-qr-preview]");
+
+  if (
+    !modeSelect ||
+    !questionFields ||
+    !customFields ||
+    !baseUrlInput ||
+    !questionSelect ||
+    !customValue ||
+    !sizeSelect ||
+    !generateButton ||
+    !downloadButton ||
+    !status ||
+    !outputUrl ||
+    !preview
+  ) {
+    return;
+  }
+
+  if (!window.QRCode) {
+    status.textContent = "QR code library failed to load. Check your internet connection and refresh the page.";
+    return;
+  }
+
+  const totalQuestions = huntData.length || 10;
+  const defaultBaseUrl = getDefaultBaseUrl();
+
+  if (!baseUrlInput.value.trim()) {
+    baseUrlInput.value = defaultBaseUrl;
+  }
+
+  for (let questionNumber = 1; questionNumber <= totalQuestions; questionNumber += 1) {
+    const option = document.createElement("option");
+    option.value = String(questionNumber);
+    option.textContent = `Question ${questionNumber}`;
+    questionSelect.append(option);
+  }
+
+  let currentQrValue = "";
+
+  const updateMode = () => {
+    const isQuestionMode = modeSelect.value === "question";
+    questionFields.classList.toggle("is-hidden", !isQuestionMode);
+    customFields.classList.toggle("is-hidden", isQuestionMode);
+  };
+
+  const renderQrCode = (value) => {
+    preview.innerHTML = "";
+
+    const qrSize = Number(sizeSelect.value) || 240;
+    currentQrValue = value;
+    outputUrl.textContent = value;
+
+    new window.QRCode(preview, {
+      text: value,
+      width: qrSize,
+      height: qrSize,
+      colorDark: "#10333f",
+      colorLight: "#ffffff",
+      correctLevel: window.QRCode.CorrectLevel.M,
+    });
+
+    downloadButton.disabled = false;
+  };
+
+  const generateQrCode = () => {
+    const isQuestionMode = modeSelect.value === "question";
+    let value = "";
+
+    if (isQuestionMode) {
+      const normalizedBaseUrl = normalizeBaseUrl(baseUrlInput.value);
+
+      if (!normalizedBaseUrl) {
+        status.textContent = "Enter the public site URL first.";
+        downloadButton.disabled = true;
+        return;
+      }
+
+      value = `${normalizedBaseUrl}q${questionSelect.value}.html`;
+    } else {
+      value = customValue.value.trim();
+
+      if (!value) {
+        status.textContent = "Enter a custom link or some text first.";
+        downloadButton.disabled = true;
+        return;
+      }
+    }
+
+    renderQrCode(value);
+    status.textContent = "QR code ready. You can download it as a PNG.";
+  };
+
+  const downloadQrCode = () => {
+    if (!currentQrValue) {
+      return;
+    }
+
+    const canvas = preview.querySelector("canvas");
+    const image = preview.querySelector("img");
+    const downloadLink = document.createElement("a");
+    const fileLabel = modeSelect.value === "question" ? `q${questionSelect.value}` : "custom";
+
+    if (canvas) {
+      downloadLink.href = canvas.toDataURL("image/png");
+    } else if (image) {
+      downloadLink.href = image.src;
+    } else {
+      status.textContent = "The QR image is not ready yet. Generate it again and try once more.";
+      return;
+    }
+
+    downloadLink.download = `qr-code-${fileLabel}.png`;
+    downloadLink.click();
+  };
+
+  modeSelect.addEventListener("change", updateMode);
+  generateButton.addEventListener("click", generateQrCode);
+  downloadButton.addEventListener("click", downloadQrCode);
+
+  updateMode();
+  generateQrCode();
+}
+
 function buildQuestionChrome(questionNumber, totalQuestions) {
   const wrapper = document.createElement("div");
   wrapper.className = "question-utility";
-
-  const topRow = document.createElement("div");
-  topRow.className = "utility-row";
-
-  const homeLink = document.createElement("a");
-  homeLink.className = "secondary-link";
-  homeLink.href = "index.html";
-  homeLink.textContent = "Back to home";
-
-  const resetButton = document.createElement("button");
-  resetButton.className = "ghost-button";
-  resetButton.type = "button";
-  resetButton.textContent = "Reset progress";
-
-  topRow.append(homeLink, resetButton);
 
   const progressBlock = document.createElement("div");
   progressBlock.className = "progress-card";
@@ -167,11 +271,10 @@ function buildQuestionChrome(questionNumber, totalQuestions) {
 
   progressTrack.append(progressBar);
   progressBlock.append(progressLabel, progressTrack);
-  wrapper.append(topRow, progressBlock);
+  wrapper.append(progressBlock);
 
   return {
     wrapper,
-    resetButton,
     progressLabel,
     progressBar,
   };
@@ -264,4 +367,22 @@ function syncProgress(progressLabel, progressBar, totalQuestions) {
 
   progressLabel.textContent = `${solvedCount} of ${totalQuestions} questions unlocked on this device`;
   progressBar.style.width = `${percentage}%`;
+}
+
+function getDefaultBaseUrl() {
+  if (window.location.protocol !== "file:") {
+    return normalizeBaseUrl(window.location.href.replace(/index\.html?$/i, ""));
+  }
+
+  return "https://lhomer7.github.io/EduCache/";
+}
+
+function normalizeBaseUrl(value) {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return "";
+  }
+
+  return trimmed.endsWith("/") ? trimmed : `${trimmed}/`;
 }
