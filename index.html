@@ -22,7 +22,7 @@
             scanning each QR code.
           </p>
           <div class="hero-actions">
-            <a class="primary-action" href="q1.html">Preview question 1</a>
+            <a class="primary-action" href="q1.html" data-preview-first>Preview question 1</a>
             <button class="secondary-action" type="button" data-reset-progress>
               Reset saved progress
             </button>
@@ -48,9 +48,11 @@
           <h2>How to edit your hunt</h2>
           <div class="help-box">
             <p>
-              Edit <strong>hunt-data.js</strong> to change every question,
-              answer, and clue in one place. Your public QR code pages still
-              stay as <strong>q1.html</strong> to <strong>q10.html</strong>.
+              Use the dashboard editor below to change every question, answer,
+              and clue in one place. When you are ready to publish, download
+              the updated <strong>hunt-data.js</strong> file and upload it to
+              GitHub. Your public question pages still stay as
+              <strong>q1.html</strong> to <strong>q10.html</strong>.
             </p>
           </div>
 
@@ -78,6 +80,89 @@
             </article>
           </div>
 
+          <section class="management-card" data-hunt-manager>
+            <div class="section-heading">
+              <h2>Hunt manager</h2>
+              <p>
+                Create multiple hunts, edit each question here on the page, and
+                download an updated <strong>hunt-data.js</strong> file when you
+                are ready to publish.
+              </p>
+            </div>
+
+            <div class="management-layout">
+              <aside class="hunt-library-panel">
+                <div class="panel-heading">
+                  <h3>Your hunts</h3>
+                  <p>Each hunt gets its own QR links using a hunt ID.</p>
+                </div>
+
+                <div class="hunt-library-list" data-hunt-list></div>
+
+                <div class="hero-actions">
+                  <button class="primary-action" type="button" data-create-hunt>
+                    New hunt
+                  </button>
+                  <button class="secondary-action" type="button" data-duplicate-hunt>
+                    Duplicate
+                  </button>
+                  <button class="secondary-action" type="button" data-delete-hunt>
+                    Delete
+                  </button>
+                </div>
+              </aside>
+
+              <section class="hunt-editor-panel">
+                <div class="section-heading">
+                  <h3 data-selected-hunt-name>Selected hunt</h3>
+                  <p data-selected-hunt-note>
+                    Choose a hunt on the left to edit its setup and questions.
+                  </p>
+                </div>
+
+                <div class="meta-grid">
+                  <label class="field-group">
+                    <span class="label">Hunt name</span>
+                    <input class="answer-input" type="text" data-hunt-name />
+                  </label>
+
+                  <label class="field-group">
+                    <span class="label">Hunt ID for QR links</span>
+                    <input class="answer-input" type="text" data-hunt-id />
+                  </label>
+
+                  <label class="field-group field-group-wide">
+                    <span class="label">Teacher notes or description</span>
+                    <textarea
+                      class="qr-textarea"
+                      rows="3"
+                      data-hunt-description
+                    ></textarea>
+                  </label>
+                </div>
+
+                <div class="hero-actions">
+                  <button class="primary-action" type="button" data-set-active-hunt>
+                    Make default hunt
+                  </button>
+                  <button class="secondary-action" type="button" data-download-library>
+                    Download hunt-data.js
+                  </button>
+                  <button class="secondary-action" type="button" data-reset-drafts>
+                    Reset local edits
+                  </button>
+                </div>
+
+                <p class="footer-note" data-save-status>
+                  Local teacher edits save in this browser. Download the file
+                  and upload it to GitHub when you want to publish changes.
+                </p>
+
+                <div class="question-editor-grid" data-question-editor></div>
+              </section>
+            </div>
+          </section>
+
           <section class="qr-tool-card">
             <div class="section-heading">
               <h2>QR code maker</h2>
@@ -89,6 +174,9 @@
 
             <div class="qr-tool-grid">
               <div class="qr-controls">
+                <p class="status-pill" data-qr-hunt-label>
+                  QR codes will use the selected hunt.
+                </p>
                 <label class="label" for="qr-mode">What do you want to make?</label>
                 <select class="qr-select" id="qr-mode" data-qr-mode>
                   <option value="question">A question page QR code</option>
@@ -162,23 +250,12 @@
             <div class="section-heading">
               <h2>Teacher preview links</h2>
               <p>
-                Use these for testing only. Students should reach these pages by
-                scanning the QR codes, not from this dashboard.
+                Use these for testing only. They open the selected hunt in
+                teacher preview mode.
               </p>
             </div>
 
-            <div class="page-grid">
-              <a class="page-link" href="q1.html">Question 1</a>
-              <a class="page-link" href="q2.html">Question 2</a>
-              <a class="page-link" href="q3.html">Question 3</a>
-              <a class="page-link" href="q4.html">Question 4</a>
-              <a class="page-link" href="q5.html">Question 5</a>
-              <a class="page-link" href="q6.html">Question 6</a>
-              <a class="page-link" href="q7.html">Question 7</a>
-              <a class="page-link" href="q8.html">Question 8</a>
-              <a class="page-link" href="q9.html">Question 9</a>
-              <a class="page-link" href="q10.html">Question 10</a>
-            </div>
+            <div class="page-grid" data-preview-links></div>
           </section>
         </div>
       </section>
