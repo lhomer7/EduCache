@@ -47,7 +47,7 @@
 
           <div class="hero-actions">
             <button class="primary-action" type="button" data-set-active-hunt>
-              Make default hunt
+              Publish as live hunt
             </button>
             <button class="secondary-action" type="button" data-download-library>
               Download hunt-data.js
@@ -96,16 +96,24 @@
             </p>
           </div>
 
-          <div class="qr-tool-grid">
-            <div class="qr-controls">
-              <p class="status-pill" data-qr-hunt-label>
-                QR codes will use the selected hunt.
-              </p>
+            <div class="qr-tool-grid">
+              <div class="qr-controls">
+                <p class="status-pill" data-qr-hunt-label>
+                  QR codes will use the selected hunt.
+                </p>
 
-              <label class="label" for="qr-base-url">Public site URL or full page URL</label>
-              <input
-                class="answer-input"
-                id="qr-base-url"
+                <label class="field-group">
+                  <span class="label">QR code mode</span>
+                  <select class="qr-select" data-qr-mode>
+                    <option value="reusable">Reusable QR codes for the live hunt</option>
+                    <option value="hunt-specific">Hunt-specific QR codes</option>
+                  </select>
+                </label>
+
+                <label class="label" for="qr-base-url">Public site URL or full page URL</label>
+                <input
+                  class="answer-input"
+                  id="qr-base-url"
                 type="text"
                 value="https://lhomer7.github.io/EduCache/"
                 data-qr-base-url
@@ -143,6 +151,10 @@
 
               <p class="footer-note" data-qr-status>
                 Choose a question and generate a QR code.
+              </p>
+
+              <p class="footer-note" data-qr-mode-help>
+                Reusable mode makes fixed links like q1.html so you can reuse the same printed QR codes after publishing a new live hunt.
               </p>
             </div>
 

@@ -140,6 +140,7 @@ function setupHuntEditor(publishedLibrary) {
     questionEditor: document.querySelector("[data-question-editor]"),
     previewLinks: document.querySelector("[data-preview-links]"),
     qrHuntLabel: document.querySelector("[data-qr-hunt-label]"),
+    qrMode: document.querySelector("[data-qr-mode]"),
     qrBaseUrl: document.querySelector("[data-qr-base-url]"),
     qrQuestionSelect: document.querySelector("[data-qr-question-select]"),
     qrQuestionTitle: document.querySelector("[data-qr-question-title]"),
@@ -149,6 +150,7 @@ function setupHuntEditor(publishedLibrary) {
     qrDownload: document.querySelector("[data-download-qr]"),
     openPreviewQuestion: document.querySelector("[data-open-preview-question]"),
     qrStatus: document.querySelector("[data-qr-status]"),
+    qrModeHelp: document.querySelector("[data-qr-mode-help]"),
     qrOutputUrl: document.querySelector("[data-qr-output-url]"),
     qrPreview: document.querySelector("[data-qr-preview]"),
   };
@@ -363,6 +365,10 @@ function setupHuntEditor(publishedLibrary) {
     renderQrForSelectedHunt(state, elements);
   });
 
+  elements.qrMode.addEventListener("change", () => {
+    renderQrForSelectedHunt(state, elements);
+  });
+
   elements.qrDownload.addEventListener("click", () => {
     downloadQrCode(elements);
   });
@@ -433,7 +439,9 @@ function renderSelectedHunt(state, elements, selectedHunt) {
     ? `Local edits are saved in this browser. ${solvedCount} of ${selectedHunt.questions.length} questions have saved progress on this device.`
     : `This hunt matches the published file. ${solvedCount} of ${selectedHunt.questions.length} questions have saved progress on this device.`;
   elements.qrHuntLabel.textContent =
-    `QR codes currently point to "${selectedHunt.name}" using hunt ID "${selectedHunt.id}".`;
+    selectedHunt.id === state.library.activeHuntId
+      ? `"${selectedHunt.name}" is the current live hunt. Reusable QR codes will open this hunt for students.`
+      : `"${selectedHunt.name}" is not live yet. Publish it as the live hunt to reuse the same printed QR codes.`;
   elements.questionEditor.innerHTML = selectedHunt.questions
     .map((question) => questionEditorMarkup(question))
     .join("");
@@ -482,15 +490,21 @@ function renderQrForSelectedHunt(state, elements) {
   }
 
   const questionNumber = Number(elements.qrQuestionSelect.value || "1");
-  const value = resolveQuestionQrValue(rawValue, selectedHunt.id, questionNumber);
+  const isReusableMode = elements.qrMode.value === "reusable";
+  const value = isReusableMode
+    ? resolveReusableQrValue(rawValue, questionNumber)
+    : resolveQuestionQrValue(rawValue, selectedHunt.id, questionNumber);
 
   renderQrImage(elements.qrPreview, value, Number(elements.qrSize.value || "240"));
   elements.qrOutputUrl.textContent = value;
   elements.qrDownload.disabled = false;
   updateQrDraftPreview(state, elements);
-  elements.qrStatus.textContent = window.QRCode
-    ? "QR code ready. Use 'Open teacher preview' to check your draft now. Students will see the new question after you upload the updated hunt-data.js."
-    : "QR code ready. A fallback online generator was used. Use 'Open teacher preview' to check your draft now.";
+  elements.qrModeHelp.textContent = isReusableMode
+    ? "Reusable mode makes fixed links like q1.html. Students will see whichever hunt is published as the live default after you upload hunt-data.js."
+    : "Hunt-specific mode makes links with a hunt ID attached. Those QR codes are locked to this one hunt.";
+  elements.qrStatus.textContent = isReusableMode
+    ? `Reusable QR ready. Publish "${selectedHunt.name}" as the live hunt and upload hunt-data.js for students to see these questions.`
+    : `Hunt-specific QR ready for "${selectedHunt.name}". Upload hunt-data.js if you want published student pages to match your latest edits.`;
 }
 
 function updateQuestionField(selectedHunt, field, questionNumber, value) {
@@ -981,6 +995,22 @@ function resolveQuestionQrValue(rawValue, huntId, questionNumber) {
   return upsertSearchParam(value, "hunt", huntId);
 }
 
+function resolveReusableQrValue(rawValue, questionNumber) {
+  const trimmed = rawValue.trim();
+
+  if (/\/q\d+\.html?$/i.test(trimmed)) {
+    return stripPreviewParam(trimmed.replace(/q\d+\.html?$/i, `q${questionNumber}.html`));
+  }
+
+  if (/\/index\.html?$/i.test(trimmed) || /\/hunt-editor\.html?$/i.test(trimmed)) {
+    return stripPreviewParam(
+      trimmed.replace(/(index|hunt-editor)\.html?$/i, `q${questionNumber}.html`)
+    );
+  }
+
+  return stripPreviewParam(`${normalizeBaseUrl(trimmed)}q${questionNumber}.html`);
+}
+
 function upsertSearchParam(rawValue, key, value) {
   try {
     const url = new URL(rawValue);
@@ -996,6 +1026,20 @@ function upsertSearchParam(rawValue, key, value) {
       .replace(/[?&]$/, "");
     const separator = cleaned.includes("?") ? "&" : "?";
     return `${cleaned}${separator}${key}=${encodeURIComponent(value)}`;
+  }
+}
+
+function stripPreviewParam(rawValue) {
+  try {
+    const url = new URL(rawValue);
+    url.searchParams.delete("preview");
+    url.searchParams.delete("hunt");
+    return url.toString();
+  } catch (error) {
+    return rawValue
+      .replace(/([?&])preview=1(&|$)/, "$1")
+      .replace(/([?&])hunt=[^&]*(&|$)/, "$1")
+      .replace(/[?&]$/, "");
   }
 }
 
