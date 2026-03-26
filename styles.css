@@ -520,6 +520,28 @@ a {
   gap: 0.85rem;
 }
 
+.qr-live-card {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.95rem 1rem;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(16, 51, 63, 0.08);
+}
+
+.qr-live-title {
+  margin: 0;
+  font-weight: 800;
+  color: var(--text-main);
+  line-height: 1.45;
+}
+
+.qr-live-copy {
+  margin: 0;
+  color: var(--text-soft);
+  line-height: 1.55;
+}
+
 .qr-select,
 .qr-textarea {
   width: 100%;

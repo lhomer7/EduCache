@@ -114,6 +114,14 @@
               <label class="label" for="qr-question-select">Question page</label>
               <select class="qr-select" id="qr-question-select" data-qr-question-select></select>
 
+              <div class="qr-live-card">
+                <p class="label">Current question preview</p>
+                <p class="qr-live-title" data-qr-question-title>
+                  Choose a question to preview its current draft text.
+                </p>
+                <p class="qr-live-copy" data-qr-question-clue></p>
+              </div>
+
               <label class="label" for="qr-size">QR size</label>
               <select class="qr-select" id="qr-size" data-qr-size>
                 <option value="180">Small</option>
@@ -128,6 +136,9 @@
                 <button class="secondary-action" type="button" data-download-qr disabled>
                   Download PNG
                 </button>
+                <a class="secondary-link" href="q1.html" data-open-preview-question>
+                  Open teacher preview
+                </a>
               </div>
 
               <p class="footer-note" data-qr-status>

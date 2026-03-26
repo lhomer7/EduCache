@@ -142,9 +142,12 @@ function setupHuntEditor(publishedLibrary) {
     qrHuntLabel: document.querySelector("[data-qr-hunt-label]"),
     qrBaseUrl: document.querySelector("[data-qr-base-url]"),
     qrQuestionSelect: document.querySelector("[data-qr-question-select]"),
+    qrQuestionTitle: document.querySelector("[data-qr-question-title]"),
+    qrQuestionClue: document.querySelector("[data-qr-question-clue]"),
     qrSize: document.querySelector("[data-qr-size]"),
     qrGenerate: document.querySelector("[data-generate-qr]"),
     qrDownload: document.querySelector("[data-download-qr]"),
+    openPreviewQuestion: document.querySelector("[data-open-preview-question]"),
     qrStatus: document.querySelector("[data-qr-status]"),
     qrOutputUrl: document.querySelector("[data-qr-output-url]"),
     qrPreview: document.querySelector("[data-qr-preview]"),
@@ -277,6 +280,22 @@ function setupHuntEditor(publishedLibrary) {
     renderHuntEditor(state, elements);
   });
 
+  elements.questionEditor.addEventListener("input", (event) => {
+    const selectedHunt = getSelectedHunt(state);
+    const field = event.target.dataset.questionField;
+    const questionNumber = Number(event.target.dataset.questionNumber);
+
+    if (!selectedHunt || !field || !questionNumber) {
+      return;
+    }
+
+    updateQuestionField(selectedHunt, field, questionNumber, event.target.value);
+    commitTeacherLibrary(state.library);
+    updateQrDraftPreview(state, elements);
+    elements.saveStatus.textContent =
+      "Draft saved locally in this browser. Download hunt-data.js and upload it when you want students to see the update.";
+  });
+
   elements.questionEditor.addEventListener("change", (event) => {
     const selectedHunt = getSelectedHunt(state);
     const field = event.target.dataset.questionField;
@@ -286,18 +305,7 @@ function setupHuntEditor(publishedLibrary) {
       return;
     }
 
-    const question = selectedHunt.questions.find((item) => item.number === questionNumber);
-
-    if (!question) {
-      return;
-    }
-
-    if (field === "answers") {
-      question.answers = splitAnswers(event.target.value);
-    } else {
-      question[field] = event.target.value;
-    }
-
+    updateQuestionField(selectedHunt, field, questionNumber, event.target.value);
     commitTeacherLibrary(state.library);
     renderHuntEditor(state, elements);
   });
@@ -441,6 +449,23 @@ function renderPreviewLinks(previewLinks, selectedHunt) {
     .join("");
 }
 
+function updateQrDraftPreview(state, elements) {
+  const selectedHunt = getSelectedHunt(state);
+  const questionNumber = Number(elements.qrQuestionSelect.value || "1");
+  const selectedQuestion = selectedHunt?.questions.find(
+    (question) => question.number === questionNumber
+  );
+
+  if (!selectedHunt || !selectedQuestion) {
+    return;
+  }
+
+  elements.qrQuestionTitle.textContent = selectedQuestion.question;
+  elements.qrQuestionClue.textContent =
+    selectedQuestion.clue || "Add the clue or hint for the next QR code.";
+  elements.openPreviewQuestion.href = buildPreviewUrl(selectedHunt.id, questionNumber);
+}
+
 function renderQrForSelectedHunt(state, elements) {
   const selectedHunt = getSelectedHunt(state);
 
@@ -462,9 +487,25 @@ function renderQrForSelectedHunt(state, elements) {
   renderQrImage(elements.qrPreview, value, Number(elements.qrSize.value || "240"));
   elements.qrOutputUrl.textContent = value;
   elements.qrDownload.disabled = false;
+  updateQrDraftPreview(state, elements);
   elements.qrStatus.textContent = window.QRCode
-    ? "QR code ready. Download the PNG when you are happy with it."
-    : "QR code ready. A fallback online generator was used for this image.";
+    ? "QR code ready. Use 'Open teacher preview' to check your draft now. Students will see the new question after you upload the updated hunt-data.js."
+    : "QR code ready. A fallback online generator was used. Use 'Open teacher preview' to check your draft now.";
+}
+
+function updateQuestionField(selectedHunt, field, questionNumber, value) {
+  const question = selectedHunt.questions.find((item) => item.number === questionNumber);
+
+  if (!question) {
+    return;
+  }
+
+  if (field === "answers") {
+    question.answers = splitAnswers(value);
+    return;
+  }
+
+  question[field] = value;
 }
 
 function setupQuestionPage(publishedLibrary) {
