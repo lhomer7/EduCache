@@ -1,148 +1,42 @@
-const QUESTION_COUNT = 10;
+const DEFAULT_QUESTION_COUNT = 10;
+const MAX_STATIC_QUESTION_PAGES = 20;
 const DRAFT_LIBRARY_STORAGE_KEY = "qr-hunt-library-draft";
 const PROGRESS_STORAGE_PREFIX = "qr-hunt-progress";
 
 document.addEventListener("DOMContentLoaded", () => {
   const publishedLibrary = getPublishedLibrary();
 
-  setupTeacherDashboard(publishedLibrary);
+  setupTeacherHome(publishedLibrary);
+  setupHuntEditor(publishedLibrary);
   setupQuestionPage(publishedLibrary);
 });
 
-function setupTeacherDashboard(publishedLibrary) {
-  const manager = document.querySelector("[data-hunt-manager]");
+function setupTeacherHome(publishedLibrary) {
+  const home = document.querySelector("[data-teacher-home]");
 
-  if (!manager) {
+  if (!home) {
     return;
   }
 
-  const initialLibrary = loadTeacherLibrary(publishedLibrary);
   const state = {
     publishedLibrary: cloneData(publishedLibrary),
-    library: initialLibrary,
-    selectedHuntId: initialLibrary.activeHuntId || initialLibrary.hunts[0]?.id || "",
+    library: loadTeacherLibrary(publishedLibrary),
   };
 
   const elements = {
-    progressSummary: document.querySelector("[data-progress-summary]"),
-    previewFirst: document.querySelector("[data-preview-first]"),
-    resetProgressButtons: Array.from(document.querySelectorAll("[data-reset-progress]")),
-    huntList: document.querySelector("[data-hunt-list]"),
-    selectedHuntName: document.querySelector("[data-selected-hunt-name]"),
-    selectedHuntNote: document.querySelector("[data-selected-hunt-note]"),
-    huntName: document.querySelector("[data-hunt-name]"),
-    huntId: document.querySelector("[data-hunt-id]"),
-    huntDescription: document.querySelector("[data-hunt-description]"),
-    saveStatus: document.querySelector("[data-save-status]"),
-    questionEditor: document.querySelector("[data-question-editor]"),
-    previewLinks: document.querySelector("[data-preview-links]"),
+    status: document.querySelector("[data-home-status]"),
+    saveStatus: document.querySelector("[data-home-save-status]"),
+    huntList: document.querySelector("[data-home-hunt-list]"),
     createHunt: document.querySelector("[data-create-hunt]"),
-    duplicateHunt: document.querySelector("[data-duplicate-hunt]"),
-    deleteHunt: document.querySelector("[data-delete-hunt]"),
-    setActiveHunt: document.querySelector("[data-set-active-hunt]"),
     downloadLibrary: document.querySelector("[data-download-library]"),
     resetDrafts: document.querySelector("[data-reset-drafts]"),
-    qrHuntLabel: document.querySelector("[data-qr-hunt-label]"),
-    qrMode: document.querySelector("[data-qr-mode]"),
-    qrQuestionFields: document.querySelector("[data-qr-question-fields]"),
-    qrCustomFields: document.querySelector("[data-qr-custom-fields]"),
-    qrBaseUrl: document.querySelector("[data-qr-base-url]"),
-    qrQuestionSelect: document.querySelector("[data-qr-question-select]"),
-    qrCustomValue: document.querySelector("[data-qr-custom-value]"),
-    qrSize: document.querySelector("[data-qr-size]"),
-    qrGenerate: document.querySelector("[data-generate-qr]"),
-    qrDownload: document.querySelector("[data-download-qr]"),
-    qrStatus: document.querySelector("[data-qr-status]"),
-    qrOutputUrl: document.querySelector("[data-qr-output-url]"),
-    qrPreview: document.querySelector("[data-qr-preview]"),
   };
-
-  populateQuestionSelect(elements.qrQuestionSelect);
-  initializeBaseUrl(elements.qrBaseUrl);
-
-  elements.resetProgressButtons.forEach((button) => {
-    button.addEventListener("click", () => {
-      if (!hasAnySavedProgress()) {
-        return;
-      }
-
-      const shouldReset = window.confirm(
-        "Clear all saved hunt progress on this device?"
-      );
-
-      if (!shouldReset) {
-        return;
-      }
-
-      clearAllProgress();
-      renderDashboard(state, elements);
-    });
-  });
 
   elements.createHunt.addEventListener("click", () => {
     const newHunt = createBlankHunt(state.library.hunts);
     state.library.hunts.push(newHunt);
-    state.selectedHuntId = newHunt.id;
-    commitTeacherLibrary(state);
-    renderDashboard(state, elements);
-  });
-
-  elements.duplicateHunt.addEventListener("click", () => {
-    const selectedHunt = getSelectedHunt(state);
-
-    if (!selectedHunt) {
-      return;
-    }
-
-    const duplicatedHunt = cloneData(selectedHunt);
-    duplicatedHunt.name = `${selectedHunt.name} Copy`;
-    duplicatedHunt.id = generateUniqueHuntId(
-      sanitizeHuntId(`${selectedHunt.id}-copy`),
-      state.library.hunts
-    );
-
-    state.library.hunts.push(duplicatedHunt);
-    state.selectedHuntId = duplicatedHunt.id;
-    commitTeacherLibrary(state);
-    renderDashboard(state, elements);
-  });
-
-  elements.deleteHunt.addEventListener("click", () => {
-    const selectedHunt = getSelectedHunt(state);
-
-    if (!selectedHunt || state.library.hunts.length <= 1) {
-      return;
-    }
-
-    const shouldDelete = window.confirm(
-      `Delete "${selectedHunt.name}" from this dashboard?`
-    );
-
-    if (!shouldDelete) {
-      return;
-    }
-
-    state.library.hunts = state.library.hunts.filter((hunt) => hunt.id !== selectedHunt.id);
-
-    if (state.library.activeHuntId === selectedHunt.id) {
-      state.library.activeHuntId = state.library.hunts[0]?.id || "";
-    }
-
-    state.selectedHuntId = state.library.activeHuntId || state.library.hunts[0]?.id || "";
-    commitTeacherLibrary(state);
-    renderDashboard(state, elements);
-  });
-
-  elements.setActiveHunt.addEventListener("click", () => {
-    const selectedHunt = getSelectedHunt(state);
-
-    if (!selectedHunt) {
-      return;
-    }
-
-    state.library.activeHuntId = selectedHunt.id;
-    commitTeacherLibrary(state);
-    renderDashboard(state, elements);
+    commitTeacherLibrary(state.library);
+    window.location.href = `hunt-editor.html?hunt=${encodeURIComponent(newHunt.id)}`;
   });
 
   elements.downloadLibrary.addEventListener("click", () => {
@@ -160,10 +54,103 @@ function setupTeacherDashboard(publishedLibrary) {
 
     window.localStorage.removeItem(DRAFT_LIBRARY_STORAGE_KEY);
     state.library = cloneData(state.publishedLibrary);
-    state.selectedHuntId =
-      state.library.activeHuntId || state.library.hunts[0]?.id || "";
-    renderDashboard(state, elements);
+    renderTeacherHome(state, elements);
   });
+
+  elements.huntList.addEventListener("click", (event) => {
+    const openButton = event.target.closest("[data-open-hunt]");
+
+    if (!openButton) {
+      return;
+    }
+
+    window.location.href = `hunt-editor.html?hunt=${encodeURIComponent(
+      openButton.dataset.openHunt
+    )}`;
+  });
+
+  renderTeacherHome(state, elements);
+}
+
+function renderTeacherHome(state, elements) {
+  const huntCount = state.library.hunts.length;
+  const hasDraftChanges = !librariesMatch(state.library, state.publishedLibrary);
+
+  elements.status.textContent = `${huntCount} hunt${huntCount === 1 ? "" : "s"} available in this browser.`;
+  elements.saveStatus.textContent = hasDraftChanges
+    ? "You have local unpublished edits. Download hunt-data.js and upload it to GitHub when you are ready to publish."
+    : "This browser matches the published hunt-data.js file.";
+
+  elements.huntList.innerHTML = state.library.hunts
+    .map((hunt) => {
+      const isDefault = hunt.id === state.library.activeHuntId;
+
+      return `
+        <article class="hunt-home-card">
+          <div class="hunt-home-copy">
+            <p class="hunt-home-tag">${isDefault ? "Default hunt" : "Saved hunt"}</p>
+            <h3>${escapeHtml(hunt.name)}</h3>
+            <p>${escapeHtml(hunt.description || "No teacher notes added yet.")}</p>
+            <p class="hunt-home-meta">
+              ${hunt.questions.length} question${hunt.questions.length === 1 ? "" : "s"} | ID: ${escapeHtml(hunt.id)}
+            </p>
+          </div>
+          <div class="hero-actions">
+            <button class="primary-action" type="button" data-open-hunt="${escapeHtml(hunt.id)}">
+              Open hunt
+            </button>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function setupHuntEditor(publishedLibrary) {
+  const editorPage = document.querySelector("[data-hunt-editor-page]");
+
+  if (!editorPage) {
+    return;
+  }
+
+  const state = {
+    publishedLibrary: cloneData(publishedLibrary),
+    library: loadTeacherLibrary(publishedLibrary),
+    selectedHuntId: "",
+  };
+
+  state.selectedHuntId = getSelectedHuntIdFromUrl(state.library);
+
+  const elements = {
+    huntList: document.querySelector("[data-hunt-list]"),
+    selectedHuntName: document.querySelector("[data-selected-hunt-name]"),
+    selectedHuntNote: document.querySelector("[data-selected-hunt-note]"),
+    huntName: document.querySelector("[data-hunt-name]"),
+    huntId: document.querySelector("[data-hunt-id]"),
+    huntDescription: document.querySelector("[data-hunt-description]"),
+    saveStatus: document.querySelector("[data-save-status]"),
+    setActiveHunt: document.querySelector("[data-set-active-hunt]"),
+    createHunt: document.querySelector("[data-create-hunt]"),
+    duplicateHunt: document.querySelector("[data-duplicate-hunt]"),
+    deleteHunt: document.querySelector("[data-delete-hunt]"),
+    downloadLibrary: document.querySelector("[data-download-library]"),
+    addQuestion: document.querySelector("[data-add-question]"),
+    removeQuestion: document.querySelector("[data-remove-question]"),
+    resetProgress: document.querySelector("[data-reset-progress]"),
+    questionEditor: document.querySelector("[data-question-editor]"),
+    previewLinks: document.querySelector("[data-preview-links]"),
+    qrHuntLabel: document.querySelector("[data-qr-hunt-label]"),
+    qrBaseUrl: document.querySelector("[data-qr-base-url]"),
+    qrQuestionSelect: document.querySelector("[data-qr-question-select]"),
+    qrSize: document.querySelector("[data-qr-size]"),
+    qrGenerate: document.querySelector("[data-generate-qr]"),
+    qrDownload: document.querySelector("[data-download-qr]"),
+    qrStatus: document.querySelector("[data-qr-status]"),
+    qrOutputUrl: document.querySelector("[data-qr-output-url]"),
+    qrPreview: document.querySelector("[data-qr-preview]"),
+  };
+
+  initializeBaseUrl(elements.qrBaseUrl);
 
   elements.huntList.addEventListener("click", (event) => {
     const button = event.target.closest("[data-select-hunt]");
@@ -173,7 +160,75 @@ function setupTeacherDashboard(publishedLibrary) {
     }
 
     state.selectedHuntId = button.dataset.selectHunt;
-    renderDashboard(state, elements);
+    syncSelectedHuntInUrl(state.selectedHuntId);
+    renderHuntEditor(state, elements);
+  });
+
+  elements.createHunt.addEventListener("click", () => {
+    const newHunt = createBlankHunt(state.library.hunts);
+    state.library.hunts.push(newHunt);
+    state.selectedHuntId = newHunt.id;
+    commitTeacherLibrary(state.library);
+    syncSelectedHuntInUrl(state.selectedHuntId);
+    renderHuntEditor(state, elements);
+  });
+
+  elements.duplicateHunt.addEventListener("click", () => {
+    const selectedHunt = getSelectedHunt(state);
+
+    if (!selectedHunt) {
+      return;
+    }
+
+    const copy = cloneData(selectedHunt);
+    copy.name = `${selectedHunt.name} Copy`;
+    copy.id = generateUniqueHuntId(`${selectedHunt.id}-copy`, state.library.hunts);
+    state.library.hunts.push(copy);
+    state.selectedHuntId = copy.id;
+    commitTeacherLibrary(state.library);
+    syncSelectedHuntInUrl(state.selectedHuntId);
+    renderHuntEditor(state, elements);
+  });
+
+  elements.deleteHunt.addEventListener("click", () => {
+    const selectedHunt = getSelectedHunt(state);
+
+    if (!selectedHunt || state.library.hunts.length <= 1) {
+      return;
+    }
+
+    const shouldDelete = window.confirm(`Delete "${selectedHunt.name}"?`);
+
+    if (!shouldDelete) {
+      return;
+    }
+
+    state.library.hunts = state.library.hunts.filter((hunt) => hunt.id !== selectedHunt.id);
+
+    if (state.library.activeHuntId === selectedHunt.id) {
+      state.library.activeHuntId = state.library.hunts[0].id;
+    }
+
+    state.selectedHuntId = state.library.hunts[0].id;
+    commitTeacherLibrary(state.library);
+    syncSelectedHuntInUrl(state.selectedHuntId);
+    renderHuntEditor(state, elements);
+  });
+
+  elements.setActiveHunt.addEventListener("click", () => {
+    const selectedHunt = getSelectedHunt(state);
+
+    if (!selectedHunt) {
+      return;
+    }
+
+    state.library.activeHuntId = selectedHunt.id;
+    commitTeacherLibrary(state.library);
+    renderHuntEditor(state, elements);
+  });
+
+  elements.downloadLibrary.addEventListener("click", () => {
+    downloadTextFile("hunt-data.js", buildHuntDataFile(state.library));
   });
 
   elements.huntName.addEventListener("change", (event) => {
@@ -183,9 +238,9 @@ function setupTeacherDashboard(publishedLibrary) {
       return;
     }
 
-    selectedHunt.name = event.target.value || "Untitled Hunt";
-    commitTeacherLibrary(state);
-    renderDashboard(state, elements);
+    selectedHunt.name = event.target.value.trim() || "Untitled Hunt";
+    commitTeacherLibrary(state.library);
+    renderHuntEditor(state, elements);
   });
 
   elements.huntId.addEventListener("change", (event) => {
@@ -195,11 +250,9 @@ function setupTeacherDashboard(publishedLibrary) {
       return;
     }
 
-    const nextId = generateUniqueHuntId(
-      sanitizeHuntId(event.target.value) || "hunt",
-      state.library.hunts,
-      selectedHunt.id
-    );
+    const nextId = generateUniqueHuntId(event.target.value, state.library.hunts, selectedHunt.id);
+
+    renameProgressKeys(selectedHunt.id, nextId, selectedHunt.questions.length);
 
     if (state.library.activeHuntId === selectedHunt.id) {
       state.library.activeHuntId = nextId;
@@ -207,8 +260,9 @@ function setupTeacherDashboard(publishedLibrary) {
 
     selectedHunt.id = nextId;
     state.selectedHuntId = nextId;
-    commitTeacherLibrary(state);
-    renderDashboard(state, elements);
+    commitTeacherLibrary(state.library);
+    syncSelectedHuntInUrl(state.selectedHuntId);
+    renderHuntEditor(state, elements);
   });
 
   elements.huntDescription.addEventListener("change", (event) => {
@@ -219,16 +273,16 @@ function setupTeacherDashboard(publishedLibrary) {
     }
 
     selectedHunt.description = event.target.value;
-    commitTeacherLibrary(state);
-    renderDashboard(state, elements);
+    commitTeacherLibrary(state.library);
+    renderHuntEditor(state, elements);
   });
 
   elements.questionEditor.addEventListener("change", (event) => {
+    const selectedHunt = getSelectedHunt(state);
     const field = event.target.dataset.questionField;
     const questionNumber = Number(event.target.dataset.questionNumber);
-    const selectedHunt = getSelectedHunt(state);
 
-    if (!field || !questionNumber || !selectedHunt) {
+    if (!selectedHunt || !field || !questionNumber) {
       return;
     }
 
@@ -244,16 +298,61 @@ function setupTeacherDashboard(publishedLibrary) {
       question[field] = event.target.value;
     }
 
-    commitTeacherLibrary(state);
-    renderDashboard(state, elements);
+    commitTeacherLibrary(state.library);
+    renderHuntEditor(state, elements);
   });
 
-  elements.qrMode.addEventListener("change", () => {
-    updateQrMode(elements);
+  elements.addQuestion.addEventListener("click", () => {
+    const selectedHunt = getSelectedHunt(state);
+
+    if (!selectedHunt) {
+      return;
+    }
+
+    if (selectedHunt.questions.length >= MAX_STATIC_QUESTION_PAGES) {
+      elements.saveStatus.textContent =
+        `This site currently has static question pages up to q${MAX_STATIC_QUESTION_PAGES}.`;
+      return;
+    }
+
+    selectedHunt.questions.push(createQuestion(selectedHunt.questions.length + 1));
+    commitTeacherLibrary(state.library);
+    renderHuntEditor(state, elements);
+  });
+
+  elements.removeQuestion.addEventListener("click", () => {
+    const selectedHunt = getSelectedHunt(state);
+
+    if (!selectedHunt || selectedHunt.questions.length <= 1) {
+      return;
+    }
+
+    selectedHunt.questions.pop();
+    commitTeacherLibrary(state.library);
+    renderHuntEditor(state, elements);
+  });
+
+  elements.resetProgress.addEventListener("click", () => {
+    const selectedHunt = getSelectedHunt(state);
+
+    if (!selectedHunt || getSolvedCount(selectedHunt.id, selectedHunt.questions.length) === 0) {
+      return;
+    }
+
+    const shouldReset = window.confirm(
+      `Clear saved progress for "${selectedHunt.name}" on this device?`
+    );
+
+    if (!shouldReset) {
+      return;
+    }
+
+    clearProgressForHunt(selectedHunt.id, selectedHunt.questions.length);
+    renderHuntEditor(state, elements);
   });
 
   elements.qrGenerate.addEventListener("click", () => {
-    generateQrCode(state, elements);
+    renderQrForSelectedHunt(state, elements);
   });
 
   elements.qrDownload.addEventListener("click", () => {
@@ -261,46 +360,35 @@ function setupTeacherDashboard(publishedLibrary) {
   });
 
   elements.qrSize.addEventListener("change", () => {
-    generateQrCode(state, elements);
+    renderQrForSelectedHunt(state, elements);
   });
 
-  renderDashboard(state, elements);
+  elements.qrQuestionSelect.addEventListener("change", () => {
+    renderQrForSelectedHunt(state, elements);
+  });
+
+  renderHuntEditor(state, elements);
 }
 
-function renderDashboard(state, elements) {
+function renderHuntEditor(state, elements) {
   const selectedHunt = getSelectedHunt(state);
 
   if (!selectedHunt) {
     return;
   }
 
-  renderProgressSummary(state, elements.progressSummary, selectedHunt);
-  renderHuntList(state, elements.huntList);
-  renderHuntEditor(state, elements, selectedHunt);
-  renderPreviewLinks(state, elements.previewLinks, selectedHunt);
-  renderQrMeta(elements, selectedHunt);
-  updateQrMode(elements);
-  generateQrCode(state, elements);
+  renderSidebarHunts(state, elements.huntList);
+  renderSelectedHunt(state, elements, selectedHunt);
+  renderPreviewLinks(elements.previewLinks, selectedHunt);
+  populateQuestionSelect(elements.qrQuestionSelect, selectedHunt.questions.length);
+  renderQrForSelectedHunt(state, elements);
 }
 
-function renderProgressSummary(state, progressSummary, selectedHunt) {
-  if (!progressSummary) {
-    return;
-  }
-
-  const solvedCount = getSolvedCount(selectedHunt.id, QUESTION_COUNT);
-  progressSummary.textContent =
-    `${state.library.hunts.length} hunts in the dashboard. ` +
-    `${solvedCount} of ${QUESTION_COUNT} questions solved on this device for "${selectedHunt.name}".`;
-}
-
-function renderHuntList(state, huntList) {
-  const activeHuntId = state.library.activeHuntId;
-
+function renderSidebarHunts(state, huntList) {
   huntList.innerHTML = state.library.hunts
     .map((hunt) => {
       const isSelected = hunt.id === state.selectedHuntId;
-      const isActive = hunt.id === activeHuntId;
+      const isDefault = hunt.id === state.library.activeHuntId;
 
       return `
         <button
@@ -310,7 +398,7 @@ function renderHuntList(state, huntList) {
         >
           <span class="hunt-list-name">${escapeHtml(hunt.name)}</span>
           <span class="hunt-list-meta">
-            ${isActive ? "Default hunt" : "Saved hunt"} | ${escapeHtml(hunt.id)}
+            ${isDefault ? "Default hunt" : "Saved hunt"} | ${hunt.questions.length} questions
           </span>
         </button>
       `;
@@ -318,79 +406,58 @@ function renderHuntList(state, huntList) {
     .join("");
 }
 
-function renderHuntEditor(state, elements, selectedHunt) {
-  elements.selectedHuntName.textContent = `${selectedHunt.name} editor`;
+function renderSelectedHunt(state, elements, selectedHunt) {
+  const solvedCount = getSolvedCount(selectedHunt.id, selectedHunt.questions.length);
+  const hasDraftChanges = !librariesMatch(state.library, state.publishedLibrary);
+
+  elements.selectedHuntName.textContent = `${selectedHunt.name}`;
   elements.selectedHuntNote.textContent =
-    `Students reach this hunt with links that include ?hunt=${selectedHunt.id}.`;
+    `Students open links like q1.html?hunt=${selectedHunt.id}.`;
   elements.huntName.value = selectedHunt.name;
   elements.huntId.value = selectedHunt.id;
   elements.huntDescription.value = selectedHunt.description || "";
-  elements.previewFirst.href = buildPreviewUrl(selectedHunt.id, 1);
   elements.setActiveHunt.disabled = selectedHunt.id === state.library.activeHuntId;
   elements.deleteHunt.disabled = state.library.hunts.length <= 1;
-  elements.saveStatus.textContent = librariesMatch(state.library, state.publishedLibrary)
-    ? "This dashboard matches the published hunt-data.js file."
-    : "You have unpublished local edits. Download hunt-data.js and upload it to GitHub when you want students to see the changes.";
-
+  elements.removeQuestion.disabled = selectedHunt.questions.length <= 1;
+  elements.addQuestion.disabled = selectedHunt.questions.length >= MAX_STATIC_QUESTION_PAGES;
+  elements.resetProgress.disabled = solvedCount === 0;
+  elements.saveStatus.textContent = hasDraftChanges
+    ? `Local edits are saved in this browser. ${solvedCount} of ${selectedHunt.questions.length} questions have saved progress on this device.`
+    : `This hunt matches the published file. ${solvedCount} of ${selectedHunt.questions.length} questions have saved progress on this device.`;
+  elements.qrHuntLabel.textContent =
+    `QR codes currently point to "${selectedHunt.name}" using hunt ID "${selectedHunt.id}".`;
   elements.questionEditor.innerHTML = selectedHunt.questions
     .map((question) => questionEditorMarkup(question))
     .join("");
 }
 
-function renderPreviewLinks(state, previewLinks, selectedHunt) {
+function renderPreviewLinks(previewLinks, selectedHunt) {
   previewLinks.innerHTML = selectedHunt.questions
     .map((question) => {
-      const href = buildPreviewUrl(selectedHunt.id, question.number);
-
-      return `<a class="page-link" href="${escapeHtml(href)}">Question ${question.number}</a>`;
+      return `<a class="page-link" href="${escapeHtml(
+        buildPreviewUrl(selectedHunt.id, question.number)
+      )}">Question ${question.number}</a>`;
     })
     .join("");
 }
 
-function renderQrMeta(elements, selectedHunt) {
-  elements.qrHuntLabel.textContent =
-    `QR codes will point to "${selectedHunt.name}" using hunt ID "${selectedHunt.id}".`;
-}
-
-function updateQrMode(elements) {
-  const isQuestionMode = elements.qrMode.value === "question";
-  elements.qrQuestionFields.classList.toggle("is-hidden", !isQuestionMode);
-  elements.qrCustomFields.classList.toggle("is-hidden", isQuestionMode);
-}
-
-function generateQrCode(state, elements) {
+function renderQrForSelectedHunt(state, elements) {
   const selectedHunt = getSelectedHunt(state);
 
   if (!selectedHunt) {
     return;
   }
 
-  const isQuestionMode = elements.qrMode.value === "question";
-  let value = "";
+  const rawValue = elements.qrBaseUrl.value.trim();
 
-  if (isQuestionMode) {
-    const rawValue = elements.qrBaseUrl.value.trim();
-
-    if (!rawValue) {
-      elements.qrStatus.textContent = "Enter the public site URL first.";
-      elements.qrDownload.disabled = true;
-      return;
-    }
-
-    value = resolveQuestionQrValue(
-      rawValue,
-      selectedHunt.id,
-      Number(elements.qrQuestionSelect.value || "1")
-    );
-  } else {
-    value = elements.qrCustomValue.value.trim();
-
-    if (!value) {
-      elements.qrStatus.textContent = "Enter a custom link or some text first.";
-      elements.qrDownload.disabled = true;
-      return;
-    }
+  if (!rawValue) {
+    elements.qrStatus.textContent = "Enter the public site URL first.";
+    elements.qrDownload.disabled = true;
+    return;
   }
+
+  const questionNumber = Number(elements.qrQuestionSelect.value || "1");
+  const value = resolveQuestionQrValue(rawValue, selectedHunt.id, questionNumber);
 
   renderQrImage(elements.qrPreview, value, Number(elements.qrSize.value || "240"));
   elements.qrOutputUrl.textContent = value;
@@ -398,50 +465,6 @@ function generateQrCode(state, elements) {
   elements.qrStatus.textContent = window.QRCode
     ? "QR code ready. Download the PNG when you are happy with it."
     : "QR code ready. A fallback online generator was used for this image.";
-}
-
-function renderQrImage(preview, value, size) {
-  preview.innerHTML = "";
-
-  if (window.QRCode) {
-    new window.QRCode(preview, {
-      text: value,
-      width: size,
-      height: size,
-      colorDark: "#10333f",
-      colorLight: "#ffffff",
-      correctLevel: window.QRCode.CorrectLevel.M,
-    });
-    return;
-  }
-
-  const image = document.createElement("img");
-  image.alt = "Generated QR code";
-  image.width = size;
-  image.height = size;
-  image.src = buildQrFallbackUrl(value, size);
-  preview.append(image);
-}
-
-function downloadQrCode(elements) {
-  const canvas = elements.qrPreview.querySelector("canvas");
-  const image = elements.qrPreview.querySelector("img");
-  const fileLabel = elements.qrMode.value === "question"
-    ? `q${elements.qrQuestionSelect.value || "1"}`
-    : "custom";
-  const link = document.createElement("a");
-
-  if (canvas) {
-    link.href = canvas.toDataURL("image/png");
-  } else if (image) {
-    link.href = image.src;
-  } else {
-    elements.qrStatus.textContent = "Generate the QR code first.";
-    return;
-  }
-
-  link.download = `qr-code-${fileLabel}.png`;
-  link.click();
 }
 
 function setupQuestionPage(publishedLibrary) {
@@ -452,8 +475,9 @@ function setupQuestionPage(publishedLibrary) {
   }
 
   const library = getQuestionPageLibrary(publishedLibrary);
+  const searchParams = new URLSearchParams(window.location.search);
   const questionNumber = Number(card.dataset.questionNumber);
-  const requestedHuntId = new URLSearchParams(window.location.search).get("hunt");
+  const requestedHuntId = searchParams.get("hunt");
   const selectedHunt =
     library.hunts.find((hunt) => hunt.id === requestedHuntId) ||
     library.hunts.find((hunt) => hunt.id === library.activeHuntId) ||
@@ -491,10 +515,17 @@ function setupQuestionPage(publishedLibrary) {
   elements.progressBar = chrome.progressBar;
 
   renderQuestion(selectedHunt, currentQuestion, elements);
-  syncProgress(elements.progressLabel, elements.progressBar, selectedHunt.id, QUESTION_COUNT);
+  syncProgress(
+    elements.progressLabel,
+    elements.progressBar,
+    selectedHunt.id,
+    selectedHunt.questions.length
+  );
 
-  if (window.localStorage.getItem(storageKey(selectedHunt.id, questionNumber)) === "solved") {
-    markSolved(elements, selectedHunt.id, QUESTION_COUNT);
+  if (
+    window.localStorage.getItem(storageKey(selectedHunt.id, questionNumber)) === "solved"
+  ) {
+    markSolved(elements, selectedHunt.id, selectedHunt.questions.length);
   } else {
     elements.input.focus();
   }
@@ -512,7 +543,7 @@ function setupQuestionPage(publishedLibrary) {
 
     if (acceptedAnswers.includes(submittedAnswer)) {
       window.localStorage.setItem(storageKey(selectedHunt.id, questionNumber), "solved");
-      markSolved(elements, selectedHunt.id, QUESTION_COUNT);
+      markSolved(elements, selectedHunt.id, selectedHunt.questions.length);
       return;
     }
 
@@ -522,7 +553,7 @@ function setupQuestionPage(publishedLibrary) {
 
 function renderQuestion(hunt, question, elements) {
   document.title = `Question ${question.number}`;
-  elements.stepLabel.textContent = `Question ${question.number} of ${QUESTION_COUNT}`;
+  elements.stepLabel.textContent = `Question ${question.number} of ${hunt.questions.length}`;
   elements.questionText.textContent = question.question;
   elements.questionHelp.textContent =
     `${hunt.name} | Answers are not case-sensitive. Type the answer and tap unlock.`;
@@ -544,7 +575,7 @@ function renderMissingQuestion(card, elements) {
 
   if (elements.questionHelp) {
     elements.questionHelp.textContent =
-      "Check the selected hunt data and make sure this question exists.";
+      "Check the selected hunt and make sure this question number exists.";
   }
 
   if (elements.form) {
@@ -626,65 +657,37 @@ function getSolvedCount(huntId, totalQuestions) {
   return solvedCount;
 }
 
-function hasAnySavedProgress() {
-  for (let index = 0; index < window.localStorage.length; index += 1) {
-    const key = window.localStorage.key(index);
-
-    if (key && key.startsWith(PROGRESS_STORAGE_PREFIX)) {
-      return true;
-    }
+function clearProgressForHunt(huntId, totalQuestions) {
+  for (let questionNumber = 1; questionNumber <= totalQuestions; questionNumber += 1) {
+    window.localStorage.removeItem(storageKey(huntId, questionNumber));
   }
-
-  return false;
 }
 
-function clearAllProgress() {
-  const progressKeys = [];
-
-  for (let index = 0; index < window.localStorage.length; index += 1) {
-    const key = window.localStorage.key(index);
-
-    if (key && key.startsWith(PROGRESS_STORAGE_PREFIX)) {
-      progressKeys.push(key);
-    }
+function renameProgressKeys(oldHuntId, newHuntId, totalQuestions) {
+  if (oldHuntId === newHuntId) {
+    return;
   }
 
-  progressKeys.forEach((key) => {
-    window.localStorage.removeItem(key);
-  });
+  for (let questionNumber = 1; questionNumber <= totalQuestions; questionNumber += 1) {
+    const oldKey = storageKey(oldHuntId, questionNumber);
+    const value = window.localStorage.getItem(oldKey);
+
+    if (value !== null) {
+      window.localStorage.setItem(storageKey(newHuntId, questionNumber), value);
+      window.localStorage.removeItem(oldKey);
+    }
+  }
 }
 
 function getQuestionPageLibrary(publishedLibrary) {
   const searchParams = new URLSearchParams(window.location.search);
   const isPreviewMode = searchParams.get("preview") === "1";
 
-  if (!isPreviewMode) {
-    return cloneData(publishedLibrary);
+  if (isPreviewMode) {
+    return loadTeacherLibrary(publishedLibrary);
   }
 
-  return loadTeacherLibrary(publishedLibrary);
-}
-
-function loadTeacherLibrary(publishedLibrary) {
-  const rawDraft = window.localStorage.getItem(DRAFT_LIBRARY_STORAGE_KEY);
-
-  if (!rawDraft) {
-    return cloneData(publishedLibrary);
-  }
-
-  try {
-    return normalizeLibraryData(JSON.parse(rawDraft));
-  } catch (error) {
-    return cloneData(publishedLibrary);
-  }
-}
-
-function commitTeacherLibrary(state) {
-  state.library = normalizeLibraryData(state.library);
-  window.localStorage.setItem(
-    DRAFT_LIBRARY_STORAGE_KEY,
-    JSON.stringify(state.library)
-  );
+  return cloneData(publishedLibrary);
 }
 
 function getPublishedLibrary() {
@@ -712,6 +715,52 @@ function getPublishedLibrary() {
   });
 }
 
+function loadTeacherLibrary(publishedLibrary) {
+  const rawDraft = window.localStorage.getItem(DRAFT_LIBRARY_STORAGE_KEY);
+
+  if (!rawDraft) {
+    return cloneData(publishedLibrary);
+  }
+
+  try {
+    return normalizeLibraryData(JSON.parse(rawDraft));
+  } catch (error) {
+    return cloneData(publishedLibrary);
+  }
+}
+
+function commitTeacherLibrary(library) {
+  window.localStorage.setItem(
+    DRAFT_LIBRARY_STORAGE_KEY,
+    JSON.stringify(normalizeLibraryData(library))
+  );
+}
+
+function getSelectedHuntIdFromUrl(library) {
+  const searchParams = new URLSearchParams(window.location.search);
+  const requestedHuntId = searchParams.get("hunt");
+
+  if (library.hunts.some((hunt) => hunt.id === requestedHuntId)) {
+    return requestedHuntId;
+  }
+
+  return library.activeHuntId || library.hunts[0]?.id || "";
+}
+
+function syncSelectedHuntInUrl(huntId) {
+  const url = new URL(window.location.href);
+  url.searchParams.set("hunt", huntId);
+  window.history.replaceState({}, "", url.toString());
+}
+
+function getSelectedHunt(state) {
+  return (
+    state.library.hunts.find((hunt) => hunt.id === state.selectedHuntId) ||
+    state.library.hunts.find((hunt) => hunt.id === state.library.activeHuntId) ||
+    state.library.hunts[0]
+  );
+}
+
 function normalizeLibraryData(rawLibrary) {
   const rawHunts = Array.isArray(rawLibrary?.hunts) ? rawLibrary.hunts : [];
   const hunts = rawHunts.length
@@ -729,18 +778,20 @@ function normalizeLibraryData(rawLibrary) {
 }
 
 function normalizeHunt(rawHunt, index) {
-  const huntId = sanitizeHuntId(rawHunt?.id || rawHunt?.name || `hunt-${index + 1}`);
-  const questions = Array.from({ length: QUESTION_COUNT }, (_, itemIndex) => {
-    const questionNumber = itemIndex + 1;
-    const existingQuestion = Array.isArray(rawHunt?.questions)
-      ? rawHunt.questions.find((question) => Number(question.number) === questionNumber)
-      : null;
-
-    return normalizeQuestion(existingQuestion, questionNumber);
-  });
+  const id = sanitizeHuntId(rawHunt?.id || rawHunt?.name || `hunt-${index + 1}`);
+  const rawQuestions = Array.isArray(rawHunt?.questions) ? rawHunt.questions : [];
+  const questionCount = Math.max(rawQuestions.length, DEFAULT_QUESTION_COUNT, 1);
+  const questions = Array.from(
+    { length: Math.min(questionCount, MAX_STATIC_QUESTION_PAGES) },
+    (_, indexNumber) => {
+      const questionNumber = indexNumber + 1;
+      const rawQuestion = rawQuestions.find((item) => Number(item.number) === questionNumber);
+      return normalizeQuestion(rawQuestion, questionNumber);
+    }
+  );
 
   return {
-    id: huntId || `hunt-${index + 1}`,
+    id: id || `hunt-${index + 1}`,
     name: rawHunt?.name?.trim() || `Hunt ${index + 1}`,
     description: rawHunt?.description?.trim() || "",
     questions,
@@ -750,9 +801,7 @@ function normalizeHunt(rawHunt, index) {
 function normalizeQuestion(rawQuestion, questionNumber) {
   return {
     number: questionNumber,
-    question:
-      rawQuestion?.question ??
-      `Add the question for step ${questionNumber}.`,
+    question: rawQuestion?.question ?? `Add the question for step ${questionNumber}.`,
     answers: Array.isArray(rawQuestion?.answers)
       ? rawQuestion.answers.map((answer) => String(answer).trim()).filter(Boolean)
       : [],
@@ -761,32 +810,33 @@ function normalizeQuestion(rawQuestion, questionNumber) {
   };
 }
 
-function ensureUniqueHuntIds(hunts) {
-  return hunts.map((hunt, index, allHunts) => ({
-    ...hunt,
-    id: generateUniqueHuntId(hunt.id || `hunt-${index + 1}`, allHunts.slice(0, index)),
-  }));
-}
-
-function getSelectedHunt(state) {
-  return (
-    state.library.hunts.find((hunt) => hunt.id === state.selectedHuntId) ||
-    state.library.hunts.find((hunt) => hunt.id === state.library.activeHuntId) ||
-    state.library.hunts[0]
-  );
-}
-
 function createBlankHunt(existingHunts) {
-  const id = generateUniqueHuntId("new-hunt", existingHunts);
-
   return {
-    id,
+    id: generateUniqueHuntId("new-hunt", existingHunts),
     name: "New Hunt",
-    description: "Add teacher notes or the class name here.",
-    questions: Array.from({ length: QUESTION_COUNT }, (_, index) =>
-      normalizeQuestion(null, index + 1)
+    description: "Add teacher notes or class details here.",
+    questions: Array.from({ length: DEFAULT_QUESTION_COUNT }, (_, index) =>
+      createQuestion(index + 1)
     ),
   };
+}
+
+function createQuestion(questionNumber) {
+  return normalizeQuestion(null, questionNumber);
+}
+
+function ensureUniqueHuntIds(hunts) {
+  const seen = [];
+
+  return hunts.map((hunt) => {
+    const nextHunt = {
+      ...hunt,
+      id: generateUniqueHuntId(hunt.id, seen),
+    };
+
+    seen.push(nextHunt);
+    return nextHunt;
+  });
 }
 
 function questionEditorMarkup(question) {
@@ -829,7 +879,7 @@ function questionEditorMarkup(question) {
       </label>
 
       <label class="field-group">
-        <span class="label">Clue or hint for the next QR code</span>
+        <span class="label">Hint or clue for the next QR code</span>
         <textarea
           class="qr-textarea"
           rows="3"
@@ -845,45 +895,10 @@ function buildPreviewUrl(huntId, questionNumber) {
   return `q${questionNumber}.html?hunt=${encodeURIComponent(huntId)}&preview=1`;
 }
 
-function resolveQuestionQrValue(rawValue, huntId, questionNumber) {
-  const trimmed = rawValue.trim();
-  let value = trimmed;
-
-  if (/\/q\d+\.html?$/i.test(trimmed)) {
-    value = trimmed.replace(/q\d+\.html?$/i, `q${questionNumber}.html`);
-  } else if (/\/index\.html?$/i.test(trimmed)) {
-    value = trimmed.replace(/index\.html?$/i, `q${questionNumber}.html`);
-  } else {
-    const normalizedBaseUrl = normalizeBaseUrl(trimmed);
-
-    if (normalizedBaseUrl) {
-      value = `${normalizedBaseUrl}q${questionNumber}.html`;
-    }
-  }
-
-  return upsertSearchParam(value, "hunt", huntId);
-}
-
-function upsertSearchParam(rawValue, key, value) {
-  try {
-    const url = new URL(rawValue);
-    url.searchParams.set(key, value);
-    return url.toString();
-  } catch (error) {
-    const delimiter = rawValue.includes("?") ? "&" : "?";
-    const withoutExisting = rawValue.replace(
-      new RegExp(`([?&])${key}=[^&]*`),
-      "$1"
-    ).replace(/[?&]$/, "");
-    const finalDelimiter = withoutExisting.includes("?") ? "&" : "?";
-    return `${withoutExisting}${finalDelimiter}${key}=${encodeURIComponent(value)}`;
-  }
-}
-
-function populateQuestionSelect(questionSelect) {
-  questionSelect.innerHTML = Array.from({ length: QUESTION_COUNT }, (_, index) => {
-    const questionNumber = index + 1;
-    return `<option value="${questionNumber}">Question ${questionNumber}</option>`;
+function populateQuestionSelect(questionSelect, questionCount) {
+  questionSelect.innerHTML = Array.from({ length: questionCount }, (_, index) => {
+    const number = index + 1;
+    return `<option value="${number}">Question ${number}</option>`;
   }).join("");
 }
 
@@ -897,7 +912,7 @@ function initializeBaseUrl(baseUrlInput) {
     return;
   }
 
-  baseUrlInput.value = normalizeBaseUrl(window.location.href.replace(/index\.html?$/i, ""));
+  baseUrlInput.value = normalizeBaseUrl(window.location.href.replace(/hunt-editor\.html?$/i, ""));
 }
 
 function normalizeBaseUrl(value) {
@@ -908,6 +923,81 @@ function normalizeBaseUrl(value) {
   }
 
   return trimmed.endsWith("/") ? trimmed : `${trimmed}/`;
+}
+
+function resolveQuestionQrValue(rawValue, huntId, questionNumber) {
+  const trimmed = rawValue.trim();
+  let value = trimmed;
+
+  if (/\/q\d+\.html?$/i.test(trimmed)) {
+    value = trimmed.replace(/q\d+\.html?$/i, `q${questionNumber}.html`);
+  } else if (/\/index\.html?$/i.test(trimmed) || /\/hunt-editor\.html?$/i.test(trimmed)) {
+    value = trimmed.replace(/(index|hunt-editor)\.html?$/i, `q${questionNumber}.html`);
+  } else {
+    value = `${normalizeBaseUrl(trimmed)}q${questionNumber}.html`;
+  }
+
+  return upsertSearchParam(value, "hunt", huntId);
+}
+
+function upsertSearchParam(rawValue, key, value) {
+  try {
+    const url = new URL(rawValue);
+    url.searchParams.set(key, value);
+    url.searchParams.delete("preview");
+    return url.toString();
+  } catch (error) {
+    const withoutPreview = rawValue
+      .replace(/([?&])preview=1(&|$)/, "$1")
+      .replace(/[?&]$/, "");
+    const cleaned = withoutPreview
+      .replace(new RegExp(`([?&])${key}=[^&]*`), "$1")
+      .replace(/[?&]$/, "");
+    const separator = cleaned.includes("?") ? "&" : "?";
+    return `${cleaned}${separator}${key}=${encodeURIComponent(value)}`;
+  }
+}
+
+function renderQrImage(preview, value, size) {
+  preview.innerHTML = "";
+
+  if (window.QRCode) {
+    new window.QRCode(preview, {
+      text: value,
+      width: size,
+      height: size,
+      colorDark: "#10333f",
+      colorLight: "#ffffff",
+      correctLevel: window.QRCode.CorrectLevel.M,
+    });
+    return;
+  }
+
+  const image = document.createElement("img");
+  image.alt = "Generated QR code";
+  image.width = size;
+  image.height = size;
+  image.src = buildQrFallbackUrl(value, size);
+  preview.append(image);
+}
+
+function downloadQrCode(elements) {
+  const canvas = elements.qrPreview.querySelector("canvas");
+  const image = elements.qrPreview.querySelector("img");
+  const link = document.createElement("a");
+  const fileLabel = `q${elements.qrQuestionSelect.value || "1"}`;
+
+  if (canvas) {
+    link.href = canvas.toDataURL("image/png");
+  } else if (image) {
+    link.href = image.src;
+  } else {
+    elements.qrStatus.textContent = "Generate the QR code first.";
+    return;
+  }
+
+  link.download = `qr-code-${fileLabel}.png`;
+  link.click();
 }
 
 function buildQrFallbackUrl(value, size) {

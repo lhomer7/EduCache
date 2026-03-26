@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hunt Editor</title>
+    <meta name="theme-color" content="#1c7ed6" />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="hunt-data.js" defer></script>
+    <script src="script.js" defer></script>
+  </head>
+  <body>
+    <main class="editor-shell" data-hunt-editor-page>
+      <aside class="editor-sidebar">
+        <div class="sidebar-top">
+          <a class="secondary-link" href="index.html">Back to home</a>
+          <div>
+            <span class="eyebrow">Hunt Sidebar</span>
+            <h1 class="sidebar-title">Choose a hunt</h1>
+          </div>
+        </div>
+
+        <div class="hunt-library-list" data-hunt-list></div>
+
+        <div class="sidebar-actions">
+          <button class="primary-action" type="button" data-create-hunt>
+            New hunt
+          </button>
+          <button class="secondary-action" type="button" data-duplicate-hunt>
+            Duplicate
+          </button>
+          <button class="secondary-action" type="button" data-delete-hunt>
+            Delete
+          </button>
+        </div>
+      </aside>
+
+      <section class="editor-main">
+        <section class="editor-hero-card">
+          <div class="section-heading">
+            <h2 data-selected-hunt-name>Selected hunt</h2>
+            <p data-selected-hunt-note>
+              Pick a hunt from the sidebar to edit its details.
+            </p>
+          </div>
+
+          <div class="hero-actions">
+            <button class="primary-action" type="button" data-set-active-hunt>
+              Make default hunt
+            </button>
+            <button class="secondary-action" type="button" data-download-library>
+              Download hunt-data.js
+            </button>
+          </div>
+
+          <p class="footer-note" data-save-status>
+            Local teacher edits save in this browser.
+          </p>
+        </section>
+
+        <section class="management-card">
+          <div class="section-heading">
+            <h2>Hunt details</h2>
+            <p>Update the name, hunt ID, and teacher notes for this hunt.</p>
+          </div>
+
+          <div class="meta-grid">
+            <label class="field-group">
+              <span class="label">Hunt name</span>
+              <input class="answer-input" type="text" data-hunt-name />
+            </label>
+
+            <label class="field-group">
+              <span class="label">Hunt ID for QR links</span>
+              <input class="answer-input" type="text" data-hunt-id />
+            </label>
+
+            <label class="field-group field-group-wide">
+              <span class="label">Teacher notes or description</span>
+              <textarea
+                class="qr-textarea"
+                rows="3"
+                data-hunt-description
+              ></textarea>
+            </label>
+          </div>
+        </section>
+
+        <section class="qr-tool-card">
+          <div class="section-heading">
+            <h2>QR code maker</h2>
+            <p>
+              Generate QR codes for the selected hunt. The links stay locked to
+              this hunt ID.
+            </p>
+          </div>
+
+          <div class="qr-tool-grid">
+            <div class="qr-controls">
+              <p class="status-pill" data-qr-hunt-label>
+                QR codes will use the selected hunt.
+              </p>
+
+              <label class="label" for="qr-base-url">Public site URL or full page URL</label>
+              <input
+                class="answer-input"
+                id="qr-base-url"
+                type="text"
+                value="https://lhomer7.github.io/EduCache/"
+                data-qr-base-url
+              />
+
+              <label class="label" for="qr-question-select">Question page</label>
+              <select class="qr-select" id="qr-question-select" data-qr-question-select></select>
+
+              <label class="label" for="qr-size">QR size</label>
+              <select class="qr-select" id="qr-size" data-qr-size>
+                <option value="180">Small</option>
+                <option value="240" selected>Medium</option>
+                <option value="320">Large</option>
+              </select>
+
+              <div class="hero-actions">
+                <button class="primary-action" type="button" data-generate-qr>
+                  Generate QR code
+                </button>
+                <button class="secondary-action" type="button" data-download-qr disabled>
+                  Download PNG
+                </button>
+              </div>
+
+              <p class="footer-note" data-qr-status>
+                Choose a question and generate a QR code.
+              </p>
+            </div>
+
+            <div class="qr-preview-card">
+              <p class="label">QR destination</p>
+              <p class="qr-output-url" data-qr-output-url>
+                Your generated link will appear here.
+              </p>
+              <div class="qr-canvas-shell">
+                <div class="qr-canvas" data-qr-preview aria-live="polite"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="preview-card">
+          <div class="section-heading">
+            <h2>Teacher preview links</h2>
+            <p>Open these to test the selected hunt before publishing.</p>
+          </div>
+
+          <div class="page-grid" data-preview-links></div>
+        </section>
+
+        <section class="management-card">
+          <div class="section-heading">
+            <h2>Question editor</h2>
+            <p>
+              Edit every question here. You can add more questions if this hunt
+              needs more than ten.
+            </p>
+          </div>
+
+          <div class="hero-actions">
+            <button class="primary-action" type="button" data-add-question>
+              Add question
+            </button>
+            <button class="secondary-action" type="button" data-remove-question>
+              Remove last question
+            </button>
+            <button class="secondary-action" type="button" data-reset-progress>
+              Reset saved progress
+            </button>
+          </div>
+
+          <div class="question-editor-grid" data-question-editor></div>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>

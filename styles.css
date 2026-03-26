@@ -263,10 +263,15 @@ a {
 .qr-preview-card,
 .teacher-note,
 .preview-card,
+.home-action-card,
+.hunt-overview-card,
 .management-card,
 .hunt-library-panel,
 .hunt-editor-panel,
-.question-editor-card {
+.question-editor-card,
+.editor-hero-card,
+.editor-sidebar,
+.editor-main {
   padding: 1.1rem;
   border-radius: var(--radius-lg);
   background: var(--surface-strong);
@@ -277,6 +282,54 @@ a {
 .preview-card {
   display: grid;
   gap: 0.75rem;
+}
+
+.home-action-card,
+.hunt-overview-card,
+.editor-hero-card {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.hunt-home-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 0.9rem;
+}
+
+.hunt-home-card {
+  display: grid;
+  gap: 1rem;
+  padding: 1.15rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(16, 51, 63, 0.1);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(243, 251, 250, 0.92));
+}
+
+.hunt-home-copy h3 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.hunt-home-copy p {
+  margin: 0.45rem 0 0;
+  color: var(--text-soft);
+  line-height: 1.55;
+}
+
+.hunt-home-tag {
+  display: inline-flex;
+  margin: 0 0 0.6rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  background: rgba(28, 126, 214, 0.1);
+  color: var(--blue-deep);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.hunt-home-meta {
+  font-size: 0.92rem;
 }
 
 .management-card {
@@ -357,6 +410,51 @@ a {
 
 .field-group-wide {
   grid-column: 1 / -1;
+}
+
+.editor-shell {
+  width: min(100%, 94rem);
+  min-height: 100vh;
+  min-height: 100svh;
+  margin: 0 auto;
+  padding: clamp(1rem, 2vw, 1.4rem);
+  display: grid;
+  grid-template-columns: minmax(15rem, 18rem) minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.editor-sidebar {
+  display: grid;
+  gap: 1rem;
+  align-content: start;
+  position: sticky;
+  top: 1rem;
+  height: fit-content;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(240, 249, 248, 0.92));
+}
+
+.sidebar-top {
+  display: grid;
+  gap: 1rem;
+}
+
+.sidebar-title {
+  margin: 0.6rem 0 0;
+  font-size: 1.5rem;
+  line-height: 1.15;
+}
+
+.sidebar-actions,
+.editor-main {
+  display: grid;
+  gap: 1rem;
+}
+
+.editor-main {
+  align-content: start;
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
 .question-editor-grid {
@@ -656,11 +754,20 @@ a {
     place-items: start center;
   }
 
+  .editor-shell,
   .management-layout,
   .meta-grid,
   .question-editor-grid,
   .qr-tool-grid {
     grid-template-columns: 1fr;
+  }
+
+  .editor-shell {
+    padding: 0.9rem;
+  }
+
+  .editor-sidebar {
+    position: static;
   }
 
   .answer-form {
@@ -706,10 +813,14 @@ a {
   .qr-preview-card,
   .teacher-note,
   .preview-card,
+  .home-action-card,
+  .hunt-overview-card,
   .management-card,
   .hunt-library-panel,
   .hunt-editor-panel,
-  .question-editor-card {
+  .question-editor-card,
+  .editor-hero-card,
+  .editor-sidebar {
     padding: 1rem;
   }
 
