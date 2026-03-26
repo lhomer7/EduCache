@@ -147,11 +147,6 @@ function setupQrGenerator(huntData) {
     return;
   }
 
-  if (!window.QRCode) {
-    status.textContent = "QR code library failed to load. Check your internet connection and refresh the page.";
-    return;
-  }
-
   const totalQuestions = huntData.length || 10;
   const defaultBaseUrl = getDefaultBaseUrl();
 
@@ -181,14 +176,23 @@ function setupQrGenerator(huntData) {
     currentQrValue = value;
     outputUrl.textContent = value;
 
-    new window.QRCode(preview, {
-      text: value,
-      width: qrSize,
-      height: qrSize,
-      colorDark: "#10333f",
-      colorLight: "#ffffff",
-      correctLevel: window.QRCode.CorrectLevel.M,
-    });
+    if (window.QRCode) {
+      new window.QRCode(preview, {
+        text: value,
+        width: qrSize,
+        height: qrSize,
+        colorDark: "#10333f",
+        colorLight: "#ffffff",
+        correctLevel: window.QRCode.CorrectLevel.M,
+      });
+    } else {
+      const image = document.createElement("img");
+      image.alt = "Generated QR code";
+      image.width = qrSize;
+      image.height = qrSize;
+      image.src = buildQrFallbackUrl(value, qrSize);
+      preview.append(image);
+    }
 
     downloadButton.disabled = false;
   };
@@ -198,15 +202,15 @@ function setupQrGenerator(huntData) {
     let value = "";
 
     if (isQuestionMode) {
-      const normalizedBaseUrl = normalizeBaseUrl(baseUrlInput.value);
+      const rawBaseUrl = baseUrlInput.value.trim();
 
-      if (!normalizedBaseUrl) {
+      if (!rawBaseUrl) {
         status.textContent = "Enter the public site URL first.";
         downloadButton.disabled = true;
         return;
       }
 
-      value = `${normalizedBaseUrl}q${questionSelect.value}.html`;
+      value = resolveQuestionQrValue(rawBaseUrl, questionSelect.value);
     } else {
       value = customValue.value.trim();
 
@@ -218,7 +222,9 @@ function setupQrGenerator(huntData) {
     }
 
     renderQrCode(value);
-    status.textContent = "QR code ready. You can download it as a PNG.";
+    status.textContent = window.QRCode
+      ? "QR code ready. You can download it as a PNG."
+      : "QR code ready. A fallback online generator was used for this image.";
   };
 
   const downloadQrCode = () => {
@@ -247,6 +253,7 @@ function setupQrGenerator(huntData) {
   modeSelect.addEventListener("change", updateMode);
   generateButton.addEventListener("click", generateQrCode);
   downloadButton.addEventListener("click", downloadQrCode);
+  sizeSelect.addEventListener("change", generateQrCode);
 
   updateMode();
   generateQrCode();
@@ -385,4 +392,29 @@ function normalizeBaseUrl(value) {
   }
 
   return trimmed.endsWith("/") ? trimmed : `${trimmed}/`;
+}
+
+function resolveQuestionQrValue(value, questionNumber) {
+  const trimmed = value.trim();
+
+  if (/\/q\d+\.html?$/i.test(trimmed)) {
+    return trimmed;
+  }
+
+  if (/\/index\.html?$/i.test(trimmed)) {
+    return trimmed.replace(/index\.html?$/i, `q${questionNumber}.html`);
+  }
+
+  const normalizedBaseUrl = normalizeBaseUrl(trimmed);
+
+  if (!normalizedBaseUrl) {
+    return value;
+  }
+
+  return `${normalizedBaseUrl}q${questionNumber}.html`;
+}
+
+function buildQrFallbackUrl(value, size) {
+  const encodedValue = encodeURIComponent(value);
+  return `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodedValue}`;
 }
