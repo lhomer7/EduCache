@@ -1,60 +1,120 @@
 const DEFAULT_QUESTION_COUNT = 10;
 const MAX_STATIC_QUESTION_PAGES = 20;
-const DRAFT_LIBRARY_STORAGE_KEY = "qr-hunt-library-draft";
+const LEGACY_DRAFT_STORAGE_KEY = "qr-hunt-library-draft";
 const PROGRESS_STORAGE_PREFIX = "qr-hunt-progress";
 
-document.addEventListener("DOMContentLoaded", () => {
-  const publishedLibrary = getPublishedLibrary();
+const supabaseClient = createSupabaseClient();
 
-  setupTeacherHome(publishedLibrary);
-  setupHuntEditor(publishedLibrary);
-  setupQuestionPage(publishedLibrary);
-});
-
-function setupTeacherHome(publishedLibrary) {
-  const home = document.querySelector("[data-teacher-home]");
-
-  if (!home) {
+document.addEventListener("DOMContentLoaded", async () => {
+  if (!supabaseClient) {
+    showConfigurationError();
     return;
   }
 
-  const state = {
-    publishedLibrary: cloneData(publishedLibrary),
-    library: loadTeacherLibrary(publishedLibrary),
-  };
+  if (document.querySelector("[data-teacher-home]")) {
+    await setupTeacherHome();
+  }
 
+  if (document.querySelector("[data-hunt-editor-page]")) {
+    await setupHuntEditor();
+  }
+
+  if (document.querySelector("[data-question-number]")) {
+    await setupQuestionPage();
+  }
+});
+
+async function setupTeacherHome() {
   const elements = {
-    status: document.querySelector("[data-home-status]"),
-    saveStatus: document.querySelector("[data-home-save-status]"),
+    authView: document.querySelector("[data-auth-view]"),
+    dashboardView: document.querySelector("[data-dashboard-view]"),
+    loginForm: document.querySelector("[data-login-form]"),
+    loginEmail: document.querySelector("[data-login-email]"),
+    loginPassword: document.querySelector("[data-login-password]"),
+    authStatus: document.querySelector("[data-auth-status]"),
+    userEmail: document.querySelector("[data-user-email]"),
+    homeStatus: document.querySelector("[data-home-status]"),
+    homeSaveStatus: document.querySelector("[data-home-save-status]"),
     huntList: document.querySelector("[data-home-hunt-list]"),
     createHunt: document.querySelector("[data-create-hunt]"),
-    downloadLibrary: document.querySelector("[data-download-library]"),
-    resetDrafts: document.querySelector("[data-reset-drafts]"),
+    importLocal: document.querySelector("[data-import-local]"),
+    signOut: document.querySelector("[data-sign-out]"),
   };
 
-  elements.createHunt.addEventListener("click", () => {
-    const newHunt = createBlankHunt(state.library.hunts);
-    state.library.hunts.push(newHunt);
-    commitTeacherLibrary(state.library);
-    window.location.href = `hunt-editor.html?hunt=${encodeURIComponent(newHunt.id)}`;
-  });
+  elements.loginForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    elements.authStatus.textContent = "Signing in...";
 
-  elements.downloadLibrary.addEventListener("click", () => {
-    downloadTextFile("hunt-data.js", buildHuntDataFile(state.library));
-  });
+    const { error } = await supabaseClient.auth.signInWithPassword({
+      email: elements.loginEmail.value.trim(),
+      password: elements.loginPassword.value,
+    });
 
-  elements.resetDrafts.addEventListener("click", () => {
-    const shouldReset = window.confirm(
-      "Reset your local dashboard edits back to the published hunt-data.js file?"
-    );
-
-    if (!shouldReset) {
+    if (error) {
+      elements.authStatus.textContent = error.message;
       return;
     }
 
-    window.localStorage.removeItem(DRAFT_LIBRARY_STORAGE_KEY);
-    state.library = cloneData(state.publishedLibrary);
-    renderTeacherHome(state, elements);
+    elements.loginPassword.value = "";
+    await renderTeacherHome(elements);
+  });
+
+  elements.createHunt.addEventListener("click", async () => {
+    const user = await getCurrentUser();
+
+    if (!user) {
+      await renderTeacherHome(elements);
+      return;
+    }
+
+    const createdHunt = await createHuntOnline(
+      user.id,
+      "New Hunt",
+      "Add teacher notes or class details here."
+    );
+
+    if (!createdHunt) {
+      elements.homeSaveStatus.textContent = "Could not create a new hunt online.";
+      return;
+    }
+
+    window.location.href = `hunt-editor.html?hunt=${encodeURIComponent(createdHunt.id)}`;
+  });
+
+  elements.importLocal.addEventListener("click", async () => {
+    const user = await getCurrentUser();
+
+    if (!user) {
+      await renderTeacherHome(elements);
+      return;
+    }
+
+    const legacyLibrary = getLegacyLocalLibrary();
+
+    if (!legacyLibrary || legacyLibrary.hunts.length === 0) {
+      elements.homeSaveStatus.textContent =
+        "There are no old local hunts to import from this browser.";
+      return;
+    }
+
+    elements.homeSaveStatus.textContent = "Importing old local hunts into Supabase...";
+    const importedCount = await importLegacyLibrary(user.id, legacyLibrary);
+
+    if (importedCount === 0) {
+      elements.homeSaveStatus.textContent = "The import did not create any hunts.";
+      return;
+    }
+
+    elements.homeSaveStatus.textContent = `${importedCount} hunt${
+      importedCount === 1 ? "" : "s"
+    } imported from the old local version.`;
+    window.localStorage.removeItem(LEGACY_DRAFT_STORAGE_KEY);
+    await renderTeacherHome(elements);
+  });
+
+  elements.signOut.addEventListener("click", async () => {
+    await supabaseClient.auth.signOut();
+    await renderTeacherHome(elements);
   });
 
   elements.huntList.addEventListener("click", (event) => {
@@ -69,34 +129,68 @@ function setupTeacherHome(publishedLibrary) {
     )}`;
   });
 
-  renderTeacherHome(state, elements);
+  supabaseClient.auth.onAuthStateChange(() => {
+    renderTeacherHome(elements);
+  });
+
+  await renderTeacherHome(elements);
 }
 
-function renderTeacherHome(state, elements) {
-  const huntCount = state.library.hunts.length;
-  const hasDraftChanges = !librariesMatch(state.library, state.publishedLibrary);
+async function renderTeacherHome(elements) {
+  const user = await getCurrentUser();
 
-  elements.status.textContent = `${huntCount} hunt${huntCount === 1 ? "" : "s"} available in this browser.`;
-  elements.saveStatus.textContent = hasDraftChanges
-    ? "You have local unpublished edits. Download hunt-data.js and upload it to GitHub when you are ready to publish."
-    : "This browser matches the published hunt-data.js file.";
+  if (!user) {
+    elements.authView.classList.remove("is-hidden");
+    elements.dashboardView.classList.add("is-hidden");
+    elements.authStatus.textContent = "Sign in to load your online hunts.";
+    return;
+  }
 
-  elements.huntList.innerHTML = state.library.hunts
+  elements.authView.classList.add("is-hidden");
+  elements.dashboardView.classList.remove("is-hidden");
+  elements.userEmail.textContent = user.email || "Signed in";
+
+  const hunts = await fetchTeacherHunts();
+  const legacyLibrary = getLegacyLocalLibrary();
+  const hasLegacyHunts = Boolean(legacyLibrary && legacyLibrary.hunts.length);
+
+  elements.importLocal.disabled = !hasLegacyHunts;
+  elements.homeStatus.textContent = `${hunts.length} hunt${
+    hunts.length === 1 ? "" : "s"
+  } saved online.`;
+  elements.homeSaveStatus.textContent = hasLegacyHunts && hunts.length === 0
+    ? "Old local hunts were found in this browser. You can import them once into Supabase."
+    : "Your hunts are now saved online in Supabase.";
+
+  if (hunts.length === 0) {
+    elements.huntList.innerHTML = `
+      <article class="hunt-home-card">
+        <div class="hunt-home-copy">
+          <p class="hunt-home-tag">No hunts yet</p>
+          <h3>Create your first online hunt</h3>
+          <p>Use the New hunt button to start building a QR code hunt in Supabase.</p>
+        </div>
+      </article>
+    `;
+    return;
+  }
+
+  elements.huntList.innerHTML = hunts
     .map((hunt) => {
-      const isDefault = hunt.id === state.library.activeHuntId;
-
       return `
         <article class="hunt-home-card">
           <div class="hunt-home-copy">
-            <p class="hunt-home-tag">${isDefault ? "Default hunt" : "Saved hunt"}</p>
+            <p class="hunt-home-tag">Online hunt</p>
             <h3>${escapeHtml(hunt.name)}</h3>
             <p>${escapeHtml(hunt.description || "No teacher notes added yet.")}</p>
-            <p class="hunt-home-meta">
-              ${hunt.questions.length} question${hunt.questions.length === 1 ? "" : "s"} | ID: ${escapeHtml(hunt.id)}
-            </p>
+            <p class="hunt-home-meta">${hunt.questionCount} question${
+              hunt.questionCount === 1 ? "" : "s"
+            }</p>
           </div>
           <div class="hero-actions">
-            <button class="primary-action" type="button" data-open-hunt="${escapeHtml(hunt.id)}">
+            <button class="primary-action" type="button" data-open-hunt="${escapeHtml(
+              hunt.id
+            )}">
               Open hunt
             </button>
           </div>
@@ -106,34 +200,27 @@ function renderTeacherHome(state, elements) {
     .join("");
 }
 
-function setupHuntEditor(publishedLibrary) {
-  const editorPage = document.querySelector("[data-hunt-editor-page]");
+async function setupHuntEditor() {
+  const user = await getCurrentUser();
 
-  if (!editorPage) {
+  if (!user) {
+    window.location.href = "index.html";
     return;
   }
 
-  const state = {
-    publishedLibrary: cloneData(publishedLibrary),
-    library: loadTeacherLibrary(publishedLibrary),
-    selectedHuntId: "",
-  };
-
-  state.selectedHuntId = getSelectedHuntIdFromUrl(state.library);
-
   const elements = {
+    editorUser: document.querySelector("[data-editor-user]"),
     huntList: document.querySelector("[data-hunt-list]"),
     selectedHuntName: document.querySelector("[data-selected-hunt-name]"),
     selectedHuntNote: document.querySelector("[data-selected-hunt-note]"),
     huntName: document.querySelector("[data-hunt-name]"),
-    huntId: document.querySelector("[data-hunt-id]"),
+    huntCode: document.querySelector("[data-hunt-code]"),
     huntDescription: document.querySelector("[data-hunt-description]"),
     saveStatus: document.querySelector("[data-save-status]"),
-    setActiveHunt: document.querySelector("[data-set-active-hunt]"),
     createHunt: document.querySelector("[data-create-hunt]"),
     duplicateHunt: document.querySelector("[data-duplicate-hunt]"),
     deleteHunt: document.querySelector("[data-delete-hunt]"),
-    downloadLibrary: document.querySelector("[data-download-library]"),
+    signOut: document.querySelector("[data-sign-out]"),
     addQuestion: document.querySelector("[data-add-question]"),
     removeQuestion: document.querySelector("[data-remove-question]"),
     resetProgress: document.querySelector("[data-reset-progress]"),
@@ -154,9 +241,18 @@ function setupHuntEditor(publishedLibrary) {
     qrPreview: document.querySelector("[data-qr-preview]"),
   };
 
+  const state = {
+    user,
+    hunts: [],
+    selectedHuntId: null,
+    selectedQuestions: [],
+    saveTimers: new Map(),
+  };
+
+  elements.editorUser.textContent = user.email || "Signed in";
   initializeBaseUrl(elements.qrBaseUrl);
 
-  elements.huntList.addEventListener("click", (event) => {
+  elements.huntList.addEventListener("click", async (event) => {
     const button = event.target.closest("[data-select-hunt]");
 
     if (!button) {
@@ -165,199 +261,239 @@ function setupHuntEditor(publishedLibrary) {
 
     state.selectedHuntId = button.dataset.selectHunt;
     syncSelectedHuntInUrl(state.selectedHuntId);
-    renderHuntEditor(state, elements);
+    await refreshEditorState(state, elements);
   });
 
-  elements.createHunt.addEventListener("click", () => {
-    const newHunt = createBlankHunt(state.library.hunts);
-    state.library.hunts.push(newHunt);
-    state.selectedHuntId = newHunt.id;
-    commitTeacherLibrary(state.library);
+  elements.createHunt.addEventListener("click", async () => {
+    const createdHunt = await createHuntOnline(
+      state.user.id,
+      "New Hunt",
+      "Add teacher notes or class details here."
+    );
+
+    if (!createdHunt) {
+      elements.saveStatus.textContent = "Could not create a new hunt online.";
+      return;
+    }
+
+    state.selectedHuntId = createdHunt.id;
     syncSelectedHuntInUrl(state.selectedHuntId);
-    renderHuntEditor(state, elements);
+    await refreshEditorState(state, elements);
   });
 
-  elements.duplicateHunt.addEventListener("click", () => {
+  elements.duplicateHunt.addEventListener("click", async () => {
     const selectedHunt = getSelectedHunt(state);
 
     if (!selectedHunt) {
       return;
     }
 
-    const copy = cloneData(selectedHunt);
-    copy.name = `${selectedHunt.name} Copy`;
-    copy.id = generateUniqueHuntId(`${selectedHunt.id}-copy`, state.library.hunts);
-    state.library.hunts.push(copy);
-    state.selectedHuntId = copy.id;
-    commitTeacherLibrary(state.library);
-    syncSelectedHuntInUrl(state.selectedHuntId);
-    renderHuntEditor(state, elements);
-  });
+    elements.saveStatus.textContent = `Duplicating "${selectedHunt.name}" online...`;
+    const duplicatedHunt = await duplicateHuntOnline(
+      selectedHunt,
+      state.selectedQuestions,
+      state.user.id
+    );
 
-  elements.deleteHunt.addEventListener("click", () => {
-    const selectedHunt = getSelectedHunt(state);
-
-    if (!selectedHunt || state.library.hunts.length <= 1) {
+    if (!duplicatedHunt) {
+      elements.saveStatus.textContent = "Could not duplicate this hunt.";
       return;
     }
 
-    const shouldDelete = window.confirm(`Delete "${selectedHunt.name}"?`);
+    state.selectedHuntId = duplicatedHunt.id;
+    syncSelectedHuntInUrl(state.selectedHuntId);
+    await refreshEditorState(state, elements);
+  });
+
+  elements.deleteHunt.addEventListener("click", async () => {
+    const selectedHunt = getSelectedHunt(state);
+
+    if (!selectedHunt) {
+      return;
+    }
+
+    const shouldDelete = window.confirm(`Delete "${selectedHunt.name}" from Supabase?`);
 
     if (!shouldDelete) {
       return;
     }
 
-    state.library.hunts = state.library.hunts.filter((hunt) => hunt.id !== selectedHunt.id);
+    const { error } = await supabaseClient.from("hunts").delete().eq("id", selectedHunt.id);
 
-    if (state.library.activeHuntId === selectedHunt.id) {
-      state.library.activeHuntId = state.library.hunts[0].id;
+    if (error) {
+      elements.saveStatus.textContent = error.message;
+      return;
     }
 
-    state.selectedHuntId = state.library.hunts[0].id;
-    commitTeacherLibrary(state.library);
-    syncSelectedHuntInUrl(state.selectedHuntId);
-    renderHuntEditor(state, elements);
+    state.selectedHuntId = null;
+    await refreshEditorState(state, elements);
   });
 
-  elements.setActiveHunt.addEventListener("click", () => {
+  elements.signOut.addEventListener("click", async () => {
+    await supabaseClient.auth.signOut();
+    window.location.href = "index.html";
+  });
+
+  elements.huntName.addEventListener("input", () => {
     const selectedHunt = getSelectedHunt(state);
 
     if (!selectedHunt) {
       return;
     }
 
-    state.library.activeHuntId = selectedHunt.id;
-    commitTeacherLibrary(state.library);
-    renderHuntEditor(state, elements);
+    selectedHunt.name = elements.huntName.value;
+    scheduleSave(
+      state,
+      "hunt-name",
+      async () => {
+        const { error } = await supabaseClient
+          .from("hunts")
+          .update({ name: selectedHunt.name || "Untitled Hunt" })
+          .eq("id", selectedHunt.id);
+
+        if (error) {
+          throw error;
+        }
+      },
+      elements,
+      `Saved "${selectedHunt.name || "Untitled Hunt"}" online.`
+    );
+    renderSelectedHunt(state, elements);
   });
 
-  elements.downloadLibrary.addEventListener("click", () => {
-    downloadTextFile("hunt-data.js", buildHuntDataFile(state.library));
-  });
-
-  elements.huntName.addEventListener("change", (event) => {
+  elements.huntDescription.addEventListener("input", () => {
     const selectedHunt = getSelectedHunt(state);
 
     if (!selectedHunt) {
       return;
     }
 
-    selectedHunt.name = event.target.value.trim() || "Untitled Hunt";
-    commitTeacherLibrary(state.library);
-    renderHuntEditor(state, elements);
-  });
+    selectedHunt.description = elements.huntDescription.value;
+    scheduleSave(
+      state,
+      "hunt-description",
+      async () => {
+        const { error } = await supabaseClient
+          .from("hunts")
+          .update({ description: selectedHunt.description })
+          .eq("id", selectedHunt.id);
 
-  elements.huntId.addEventListener("change", (event) => {
-    const selectedHunt = getSelectedHunt(state);
-
-    if (!selectedHunt) {
-      return;
-    }
-
-    const nextId = generateUniqueHuntId(event.target.value, state.library.hunts, selectedHunt.id);
-
-    renameProgressKeys(selectedHunt.id, nextId, selectedHunt.questions.length);
-
-    if (state.library.activeHuntId === selectedHunt.id) {
-      state.library.activeHuntId = nextId;
-    }
-
-    selectedHunt.id = nextId;
-    state.selectedHuntId = nextId;
-    commitTeacherLibrary(state.library);
-    syncSelectedHuntInUrl(state.selectedHuntId);
-    renderHuntEditor(state, elements);
-  });
-
-  elements.huntDescription.addEventListener("change", (event) => {
-    const selectedHunt = getSelectedHunt(state);
-
-    if (!selectedHunt) {
-      return;
-    }
-
-    selectedHunt.description = event.target.value;
-    commitTeacherLibrary(state.library);
-    renderHuntEditor(state, elements);
+        if (error) {
+          throw error;
+        }
+      },
+      elements,
+      "Teacher notes saved online."
+    );
   });
 
   elements.questionEditor.addEventListener("input", (event) => {
-    const selectedHunt = getSelectedHunt(state);
-    const field = event.target.dataset.questionField;
-    const questionNumber = Number(event.target.dataset.questionNumber);
+    const question = getQuestionFromEvent(state, event);
 
-    if (!selectedHunt || !field || !questionNumber) {
+    if (!question) {
       return;
     }
 
-    updateQuestionField(selectedHunt, field, questionNumber, event.target.value);
-    commitTeacherLibrary(state.library);
-    updateQrDraftPreview(state, elements);
-    elements.saveStatus.textContent =
-      "Draft saved locally in this browser. Download hunt-data.js and upload it when you want students to see the update.";
+    applyQuestionFieldChange(question, event.target.dataset.questionField, event.target.value);
+    renderSelectedQuestionPreview(state, elements);
+
+    scheduleSave(
+      state,
+      `question-${question.id}`,
+      async () => {
+        const { error } = await supabaseClient
+          .from("questions")
+          .update({
+            question: question.question,
+            answers: question.answers,
+            clue_title: question.clue_title,
+            clue: question.clue,
+          })
+          .eq("id", question.id);
+
+        if (error) {
+          throw error;
+        }
+      },
+      elements,
+      `Question ${question.number} saved online.`
+    );
   });
 
-  elements.questionEditor.addEventListener("change", (event) => {
-    const selectedHunt = getSelectedHunt(state);
-    const field = event.target.dataset.questionField;
-    const questionNumber = Number(event.target.dataset.questionNumber);
-
-    if (!selectedHunt || !field || !questionNumber) {
-      return;
-    }
-
-    updateQuestionField(selectedHunt, field, questionNumber, event.target.value);
-    commitTeacherLibrary(state.library);
-    renderHuntEditor(state, elements);
-  });
-
-  elements.addQuestion.addEventListener("click", () => {
+  elements.addQuestion.addEventListener("click", async () => {
     const selectedHunt = getSelectedHunt(state);
 
     if (!selectedHunt) {
       return;
     }
 
-    if (selectedHunt.questions.length >= MAX_STATIC_QUESTION_PAGES) {
+    if (state.selectedQuestions.length >= MAX_STATIC_QUESTION_PAGES) {
       elements.saveStatus.textContent =
         `This site currently has static question pages up to q${MAX_STATIC_QUESTION_PAGES}.`;
       return;
     }
 
-    selectedHunt.questions.push(createQuestion(selectedHunt.questions.length + 1));
-    commitTeacherLibrary(state.library);
-    renderHuntEditor(state, elements);
-  });
+    const nextNumber = state.selectedQuestions.length + 1;
+    const { data, error } = await supabaseClient
+      .from("questions")
+      .insert({
+        hunt_id: selectedHunt.id,
+        number: nextNumber,
+        question: `Add the question for step ${nextNumber}.`,
+        answers: [],
+        clue_title: "Clue unlocked",
+        clue: "Add the clue for the next QR code location.",
+      })
+      .select()
+      .single();
 
-  elements.removeQuestion.addEventListener("click", () => {
-    const selectedHunt = getSelectedHunt(state);
-
-    if (!selectedHunt || selectedHunt.questions.length <= 1) {
+    if (error) {
+      elements.saveStatus.textContent = error.message;
       return;
     }
 
-    selectedHunt.questions.pop();
-    commitTeacherLibrary(state.library);
-    renderHuntEditor(state, elements);
+    state.selectedQuestions.push(normalizeRemoteQuestion(data));
+    renderSelectedHunt(state, elements);
+    renderPreviewLinks(elements.previewLinks, state.selectedQuestions, selectedHunt.id);
+    populateQuestionSelect(elements.qrQuestionSelect, state.selectedQuestions.length);
+    renderQrForSelectedHunt(state, elements);
+    elements.saveStatus.textContent = `Question ${nextNumber} added online.`;
+  });
+
+  elements.removeQuestion.addEventListener("click", async () => {
+    const selectedHunt = getSelectedHunt(state);
+    const lastQuestion = state.selectedQuestions[state.selectedQuestions.length - 1];
+
+    if (!selectedHunt || !lastQuestion || state.selectedQuestions.length <= 1) {
+      return;
+    }
+
+    const { error } = await supabaseClient.from("questions").delete().eq("id", lastQuestion.id);
+
+    if (error) {
+      elements.saveStatus.textContent = error.message;
+      return;
+    }
+
+    state.selectedQuestions.pop();
+    clearProgressForHunt(selectedHunt.id, state.selectedQuestions.length + 1);
+    renderSelectedHunt(state, elements);
+    renderPreviewLinks(elements.previewLinks, state.selectedQuestions, selectedHunt.id);
+    populateQuestionSelect(elements.qrQuestionSelect, state.selectedQuestions.length);
+    renderQrForSelectedHunt(state, elements);
+    elements.saveStatus.textContent = `Question ${lastQuestion.number} removed online.`;
   });
 
   elements.resetProgress.addEventListener("click", () => {
     const selectedHunt = getSelectedHunt(state);
 
-    if (!selectedHunt || getSolvedCount(selectedHunt.id, selectedHunt.questions.length) === 0) {
+    if (!selectedHunt) {
       return;
     }
 
-    const shouldReset = window.confirm(
-      `Clear saved progress for "${selectedHunt.name}" on this device?`
-    );
-
-    if (!shouldReset) {
-      return;
-    }
-
-    clearProgressForHunt(selectedHunt.id, selectedHunt.questions.length);
-    renderHuntEditor(state, elements);
+    clearProgressForHunt(selectedHunt.id, state.selectedQuestions.length);
+    renderSelectedHunt(state, elements);
+    elements.saveStatus.textContent = `Saved device progress cleared for "${selectedHunt.name}".`;
   });
 
   elements.qrGenerate.addEventListener("click", () => {
@@ -376,88 +512,108 @@ function setupHuntEditor(publishedLibrary) {
     renderQrForSelectedHunt(state, elements);
   });
 
-  renderHuntEditor(state, elements);
+  await refreshEditorState(state, elements);
 }
 
-function renderHuntEditor(state, elements) {
+async function refreshEditorState(state, elements) {
+  state.hunts = await fetchTeacherHunts();
+
+  if (state.hunts.length === 0) {
+    elements.huntList.innerHTML = `
+      <button class="hunt-list-item is-selected" type="button">
+        <span class="hunt-list-name">No hunts yet</span>
+        <span class="hunt-list-meta">Create a new online hunt from the sidebar</span>
+      </button>
+    `;
+    elements.questionEditor.innerHTML = "";
+    elements.previewLinks.innerHTML = "";
+    elements.saveStatus.textContent = "Create your first hunt to start editing online.";
+    return;
+  }
+
+  if (!state.selectedHuntId || !state.hunts.some((hunt) => hunt.id === state.selectedHuntId)) {
+    state.selectedHuntId = getSelectedHuntIdFromUrl(state.hunts) || state.hunts[0].id;
+    syncSelectedHuntInUrl(state.selectedHuntId);
+  }
+
+  state.selectedQuestions = await fetchQuestionsForHunt(state.selectedHuntId);
+  renderHuntEditorPage(state, elements);
+}
+
+function renderHuntEditorPage(state, elements) {
   const selectedHunt = getSelectedHunt(state);
+
+  renderSidebarHunts(state.hunts, state.selectedHuntId, elements.huntList);
 
   if (!selectedHunt) {
     return;
   }
 
-  renderSidebarHunts(state, elements.huntList);
-  renderSelectedHunt(state, elements, selectedHunt);
-  renderPreviewLinks(elements.previewLinks, selectedHunt);
-  populateQuestionSelect(elements.qrQuestionSelect, selectedHunt.questions.length);
+  renderSelectedHunt(state, elements);
+  renderPreviewLinks(elements.previewLinks, state.selectedQuestions, selectedHunt.id);
+  populateQuestionSelect(elements.qrQuestionSelect, state.selectedQuestions.length);
   renderQrForSelectedHunt(state, elements);
 }
 
-function renderSidebarHunts(state, huntList) {
-  huntList.innerHTML = state.library.hunts
+function renderSidebarHunts(hunts, selectedHuntId, huntList) {
+  huntList.innerHTML = hunts
     .map((hunt) => {
-      const isSelected = hunt.id === state.selectedHuntId;
-      const isDefault = hunt.id === state.library.activeHuntId;
-
       return `
         <button
-          class="hunt-list-item${isSelected ? " is-selected" : ""}"
+          class="hunt-list-item${hunt.id === selectedHuntId ? " is-selected" : ""}"
           type="button"
           data-select-hunt="${escapeHtml(hunt.id)}"
         >
           <span class="hunt-list-name">${escapeHtml(hunt.name)}</span>
-          <span class="hunt-list-meta">
-            ${isDefault ? "Default hunt" : "Saved hunt"} | ${hunt.questions.length} questions
-          </span>
+          <span class="hunt-list-meta">${hunt.questionCount} questions online</span>
         </button>
       `;
     })
     .join("");
 }
 
-function renderSelectedHunt(state, elements, selectedHunt) {
-  const solvedCount = getSolvedCount(selectedHunt.id, selectedHunt.questions.length);
-  const hasDraftChanges = !librariesMatch(state.library, state.publishedLibrary);
+function renderSelectedHunt(state, elements) {
+  const selectedHunt = getSelectedHunt(state);
 
-  elements.selectedHuntName.textContent = `${selectedHunt.name}`;
+  if (!selectedHunt) {
+    return;
+  }
+
+  const solvedCount = getSolvedCount(selectedHunt.id, state.selectedQuestions.length);
+
+  elements.selectedHuntName.textContent = selectedHunt.name;
   elements.selectedHuntNote.textContent =
     `Students open links like q1.html?hunt=${selectedHunt.id}.`;
   elements.huntName.value = selectedHunt.name;
-  elements.huntId.value = selectedHunt.id;
+  elements.huntCode.value = selectedHunt.id;
   elements.huntDescription.value = selectedHunt.description || "";
-  elements.setActiveHunt.disabled = selectedHunt.id === state.library.activeHuntId;
-  elements.deleteHunt.disabled = state.library.hunts.length <= 1;
-  elements.removeQuestion.disabled = selectedHunt.questions.length <= 1;
-  elements.addQuestion.disabled = selectedHunt.questions.length >= MAX_STATIC_QUESTION_PAGES;
+  elements.deleteHunt.disabled = state.hunts.length <= 1;
+  elements.removeQuestion.disabled = state.selectedQuestions.length <= 1;
+  elements.addQuestion.disabled = state.selectedQuestions.length >= MAX_STATIC_QUESTION_PAGES;
   elements.resetProgress.disabled = solvedCount === 0;
-  elements.saveStatus.textContent = hasDraftChanges
-    ? `Local edits are saved in this browser. ${solvedCount} of ${selectedHunt.questions.length} questions have saved progress on this device.`
-    : `This hunt matches the published file. ${solvedCount} of ${selectedHunt.questions.length} questions have saved progress on this device.`;
   elements.qrHuntLabel.textContent =
-    `QR codes currently point to "${selectedHunt.name}" using hunt ID "${selectedHunt.id}".`;
-  elements.questionEditor.innerHTML = selectedHunt.questions
+    `QR codes currently point to "${selectedHunt.name}".`;
+  elements.questionEditor.innerHTML = state.selectedQuestions
     .map((question) => questionEditorMarkup(question))
     .join("");
 }
 
-function renderPreviewLinks(previewLinks, selectedHunt) {
-  previewLinks.innerHTML = selectedHunt.questions
+function renderPreviewLinks(previewLinks, questions, huntId) {
+  previewLinks.innerHTML = questions
     .map((question) => {
       return `<a class="page-link" href="${escapeHtml(
-        buildPreviewUrl(selectedHunt.id, question.number)
+        buildPreviewUrl(huntId, question.number)
       )}">Question ${question.number}</a>`;
     })
     .join("");
 }
 
-function updateQrDraftPreview(state, elements) {
-  const selectedHunt = getSelectedHunt(state);
+function renderSelectedQuestionPreview(state, elements) {
   const questionNumber = Number(elements.qrQuestionSelect.value || "1");
-  const selectedQuestion = selectedHunt?.questions.find(
-    (question) => question.number === questionNumber
-  );
+  const selectedQuestion = state.selectedQuestions.find((question) => question.number === questionNumber);
+  const selectedHunt = getSelectedHunt(state);
 
-  if (!selectedHunt || !selectedQuestion) {
+  if (!selectedQuestion || !selectedHunt) {
     return;
   }
 
@@ -470,7 +626,7 @@ function updateQrDraftPreview(state, elements) {
 function renderQrForSelectedHunt(state, elements) {
   const selectedHunt = getSelectedHunt(state);
 
-  if (!selectedHunt) {
+  if (!selectedHunt || state.selectedQuestions.length === 0) {
     return;
   }
 
@@ -488,46 +644,20 @@ function renderQrForSelectedHunt(state, elements) {
   renderQrImage(elements.qrPreview, value, Number(elements.qrSize.value || "240"));
   elements.qrOutputUrl.textContent = value;
   elements.qrDownload.disabled = false;
-  updateQrDraftPreview(state, elements);
+  renderSelectedQuestionPreview(state, elements);
   elements.qrModeHelp.textContent =
     "Each QR code is tied to this hunt, so students will always open the matching hunt questions.";
   elements.qrStatus.textContent =
-    `Hunt-specific QR ready for "${selectedHunt.name}". Upload hunt-data.js if you want published student pages to match your latest edits.`;
+    `QR ready for "${selectedHunt.name}". Student pages use the live Supabase data for this hunt.`;
 }
 
-function updateQuestionField(selectedHunt, field, questionNumber, value) {
-  const question = selectedHunt.questions.find((item) => item.number === questionNumber);
-
-  if (!question) {
-    return;
-  }
-
-  if (field === "answers") {
-    question.answers = splitAnswers(value);
-    return;
-  }
-
-  question[field] = value;
-}
-
-function setupQuestionPage(publishedLibrary) {
+async function setupQuestionPage() {
   const card = document.querySelector("[data-question-number]");
-
-  if (!card) {
-    return;
-  }
-
-  const library = getQuestionPageLibrary(publishedLibrary);
-  const searchParams = new URLSearchParams(window.location.search);
   const questionNumber = Number(card.dataset.questionNumber);
-  const requestedHuntId = searchParams.get("hunt");
-  const selectedHunt =
-    library.hunts.find((hunt) => hunt.id === requestedHuntId) ||
-    library.hunts.find((hunt) => hunt.id === library.activeHuntId) ||
-    library.hunts[0];
-  const currentQuestion = selectedHunt?.questions.find(
-    (item) => item.number === questionNumber
-  );
+  const searchParams = new URLSearchParams(window.location.search);
+  const huntId = searchParams.get("hunt");
+  const previewMode = searchParams.get("preview") === "1";
+  const questionData = await loadQuestionPageData(huntId, previewMode);
 
   const elements = {
     stepLabel: card.querySelector("[data-step-label]"),
@@ -543,32 +673,39 @@ function setupQuestionPage(publishedLibrary) {
     cardBody: card.querySelector(".card-body"),
   };
 
-  if (
-    !selectedHunt ||
-    !currentQuestion ||
-    Object.values(elements).some((element) => !element)
-  ) {
-    renderMissingQuestion(card, elements);
+  if (!questionData.hunt || questionData.questions.length === 0) {
+    renderMissingQuestion(card, elements, "No hunt was found for this QR link.");
     return;
   }
 
-  const chrome = buildQuestionChrome(selectedHunt.id);
+  const currentQuestion = questionData.questions.find((question) => question.number === questionNumber);
+
+  if (!currentQuestion) {
+    renderMissingQuestion(card, elements, "This question number does not exist for the selected hunt.");
+    return;
+  }
+
+  const chrome = buildQuestionChrome(questionData.hunt.id);
   elements.cardBody.insertBefore(chrome.wrapper, elements.cardBody.firstChild);
   elements.progressLabel = chrome.progressLabel;
   elements.progressBar = chrome.progressBar;
 
-  renderQuestion(selectedHunt, currentQuestion, elements);
+  renderQuestion(
+    questionData.hunt,
+    currentQuestion,
+    questionData.questions.length,
+    elements,
+    previewMode
+  );
   syncProgress(
     elements.progressLabel,
     elements.progressBar,
-    selectedHunt.id,
-    selectedHunt.questions.length
+    questionData.hunt.id,
+    questionData.questions.length
   );
 
-  if (
-    window.localStorage.getItem(storageKey(selectedHunt.id, questionNumber)) === "solved"
-  ) {
-    markSolved(elements, selectedHunt.id, selectedHunt.questions.length);
+  if (window.localStorage.getItem(storageKey(questionData.hunt.id, questionNumber)) === "solved") {
+    markSolved(elements, questionData.hunt.id, questionData.questions.length);
   } else {
     elements.input.focus();
   }
@@ -585,8 +722,8 @@ function setupQuestionPage(publishedLibrary) {
     }
 
     if (acceptedAnswers.includes(submittedAnswer)) {
-      window.localStorage.setItem(storageKey(selectedHunt.id, questionNumber), "solved");
-      markSolved(elements, selectedHunt.id, selectedHunt.questions.length);
+      window.localStorage.setItem(storageKey(questionData.hunt.id, questionNumber), "solved");
+      markSolved(elements, questionData.hunt.id, questionData.questions.length);
       return;
     }
 
@@ -594,17 +731,50 @@ function setupQuestionPage(publishedLibrary) {
   });
 }
 
-function renderQuestion(hunt, question, elements) {
+async function loadQuestionPageData(huntId, previewMode) {
+  let huntQuery = supabaseClient.from("hunts").select("id, name, description");
+
+  if (huntId) {
+    huntQuery = huntQuery.eq("id", huntId);
+  } else {
+    huntQuery = huntQuery.order("created_at", { ascending: true }).limit(1);
+  }
+
+  if (!previewMode) {
+    huntQuery = huntQuery.eq("is_published", true);
+  }
+
+  const { data: huntRows } = await huntQuery;
+  const hunt = huntRows && huntRows.length ? huntRows[0] : null;
+
+  if (!hunt) {
+    return { hunt: null, questions: [] };
+  }
+
+  const { data: questions } = await supabaseClient
+    .from("questions")
+    .select("id, hunt_id, number, question, answers, clue_title, clue")
+    .eq("hunt_id", hunt.id)
+    .order("number", { ascending: true });
+
+  return {
+    hunt,
+    questions: (questions || []).map(normalizeRemoteQuestion),
+  };
+}
+
+function renderQuestion(hunt, question, totalQuestions, elements, previewMode) {
   document.title = `Question ${question.number}`;
-  elements.stepLabel.textContent = `Question ${question.number} of ${hunt.questions.length}`;
+  elements.stepLabel.textContent = `Question ${question.number} of ${totalQuestions}`;
   elements.questionText.textContent = question.question;
-  elements.questionHelp.textContent =
-    `${hunt.name} | Answers are not case-sensitive. Type the answer and tap unlock.`;
-  elements.clueTitle.textContent = question.clueTitle || "Clue unlocked";
+  elements.questionHelp.textContent = previewMode
+    ? `${hunt.name} | Teacher preview mode`
+    : `${hunt.name} | Answers are not case-sensitive. Type the answer and tap unlock.`;
+  elements.clueTitle.textContent = question.clue_title || "Clue unlocked";
   elements.clueText.textContent = question.clue;
 }
 
-function renderMissingQuestion(card, elements) {
+function renderMissingQuestion(card, elements, message) {
   document.title = "Question not found";
   card.classList.add("is-missing");
 
@@ -613,12 +783,11 @@ function renderMissingQuestion(card, elements) {
   }
 
   if (elements.questionText) {
-    elements.questionText.textContent = "This question has not been set up yet.";
+    elements.questionText.textContent = "This question is not available right now.";
   }
 
   if (elements.questionHelp) {
-    elements.questionHelp.textContent =
-      "Check the selected hunt and make sure this question number exists.";
+    elements.questionHelp.textContent = message;
   }
 
   if (elements.form) {
@@ -626,7 +795,7 @@ function renderMissingQuestion(card, elements) {
   }
 
   if (elements.feedback) {
-    setFeedback(elements.feedback, "No question data was found for this page.", "is-error");
+    setFeedback(elements.feedback, message, "is-error");
   }
 }
 
@@ -706,88 +875,138 @@ function clearProgressForHunt(huntId, totalQuestions) {
   }
 }
 
-function renameProgressKeys(oldHuntId, newHuntId, totalQuestions) {
-  if (oldHuntId === newHuntId) {
-    return;
+async function fetchTeacherHunts() {
+  const { data: hunts, error } = await supabaseClient
+    .from("hunts")
+    .select("id, name, description, created_at, updated_at")
+    .order("updated_at", { ascending: false });
+
+  if (error || !hunts) {
+    return [];
   }
 
-  for (let questionNumber = 1; questionNumber <= totalQuestions; questionNumber += 1) {
-    const oldKey = storageKey(oldHuntId, questionNumber);
-    const value = window.localStorage.getItem(oldKey);
+  const { data: questions } = await supabaseClient
+    .from("questions")
+    .select("hunt_id, number");
 
-    if (value !== null) {
-      window.localStorage.setItem(storageKey(newHuntId, questionNumber), value);
-      window.localStorage.removeItem(oldKey);
-    }
-  }
-}
+  const countMap = new Map();
 
-function getQuestionPageLibrary(publishedLibrary) {
-  const searchParams = new URLSearchParams(window.location.search);
-  const isPreviewMode = searchParams.get("preview") === "1";
-
-  if (isPreviewMode) {
-    return loadTeacherLibrary(publishedLibrary);
-  }
-
-  return cloneData(publishedLibrary);
-}
-
-function getPublishedLibrary() {
-  if (window.HUNT_LIBRARY) {
-    return normalizeLibraryData(window.HUNT_LIBRARY);
-  }
-
-  if (Array.isArray(window.HUNT_DATA)) {
-    return normalizeLibraryData({
-      activeHuntId: "demo-hunt",
-      hunts: [
-        {
-          id: "demo-hunt",
-          name: "Demo Hunt",
-          description: "Imported from the legacy single-hunt format.",
-          questions: window.HUNT_DATA,
-        },
-      ],
-    });
-  }
-
-  return normalizeLibraryData({
-    activeHuntId: "demo-hunt",
-    hunts: [createBlankHunt([])],
+  (questions || []).forEach((question) => {
+    const currentCount = countMap.get(question.hunt_id) || 0;
+    countMap.set(question.hunt_id, currentCount + 1);
   });
+
+  return hunts.map((hunt) => ({
+    ...hunt,
+    questionCount: countMap.get(hunt.id) || 0,
+  }));
 }
 
-function loadTeacherLibrary(publishedLibrary) {
-  const rawDraft = window.localStorage.getItem(DRAFT_LIBRARY_STORAGE_KEY);
+async function fetchQuestionsForHunt(huntId) {
+  const { data: questions, error } = await supabaseClient
+    .from("questions")
+    .select("id, hunt_id, number, question, answers, clue_title, clue")
+    .eq("hunt_id", huntId)
+    .order("number", { ascending: true });
 
-  if (!rawDraft) {
-    return cloneData(publishedLibrary);
+  if (error || !questions) {
+    return [];
   }
 
-  try {
-    return normalizeLibraryData(JSON.parse(rawDraft));
-  } catch (error) {
-    return cloneData(publishedLibrary);
-  }
+  return questions.map(normalizeRemoteQuestion);
 }
 
-function commitTeacherLibrary(library) {
-  window.localStorage.setItem(
-    DRAFT_LIBRARY_STORAGE_KEY,
-    JSON.stringify(normalizeLibraryData(library))
+function normalizeRemoteQuestion(question) {
+  return {
+    ...question,
+    answers: Array.isArray(question.answers) ? question.answers : [],
+  };
+}
+
+async function createHuntOnline(ownerId, name, description) {
+  const { data: hunt, error } = await supabaseClient
+    .from("hunts")
+    .insert({
+      owner_id: ownerId,
+      name,
+      description,
+      is_default: false,
+      is_published: true,
+    })
+    .select()
+    .single();
+
+  if (error || !hunt) {
+    return null;
+  }
+
+  const questions = Array.from({ length: DEFAULT_QUESTION_COUNT }, (_, index) => {
+    const questionNumber = index + 1;
+    return {
+      hunt_id: hunt.id,
+      number: questionNumber,
+      question: `Add the question for step ${questionNumber}.`,
+      answers: [],
+      clue_title: "Clue unlocked",
+      clue: "Add the clue for the next QR code location.",
+    };
+  });
+
+  const { error: questionsError } = await supabaseClient.from("questions").insert(questions);
+
+  if (questionsError) {
+    return null;
+  }
+
+  return hunt;
+}
+
+async function duplicateHuntOnline(selectedHunt, questions, ownerId) {
+  const createdHunt = await createHuntOnline(
+    ownerId,
+    `${selectedHunt.name} Copy`,
+    selectedHunt.description || ""
   );
+
+  if (!createdHunt) {
+    return null;
+  }
+
+  const duplicatedQuestions = questions.map((question) => ({
+    hunt_id: createdHunt.id,
+    number: question.number,
+    question: question.question,
+    answers: question.answers,
+    clue_title: question.clue_title,
+    clue: question.clue,
+  }));
+
+  await supabaseClient.from("questions").delete().eq("hunt_id", createdHunt.id);
+  const { error } = await supabaseClient.from("questions").insert(duplicatedQuestions);
+
+  if (error) {
+    return null;
+  }
+
+  return createdHunt;
 }
 
-function getSelectedHuntIdFromUrl(library) {
-  const searchParams = new URLSearchParams(window.location.search);
-  const requestedHuntId = searchParams.get("hunt");
+function getCurrentUser() {
+  return supabaseClient.auth.getUser().then(({ data }) => data.user);
+}
 
-  if (library.hunts.some((hunt) => hunt.id === requestedHuntId)) {
+function getSelectedHunt(state) {
+  return state.hunts.find((hunt) => hunt.id === state.selectedHuntId) || null;
+}
+
+function getSelectedHuntIdFromUrl(hunts) {
+  const requestedHuntId = new URLSearchParams(window.location.search).get("hunt");
+
+  if (hunts.some((hunt) => hunt.id === requestedHuntId)) {
     return requestedHuntId;
   }
 
-  return library.activeHuntId || library.hunts[0]?.id || "";
+  return hunts[0]?.id || null;
 }
 
 function syncSelectedHuntInUrl(huntId) {
@@ -796,153 +1015,126 @@ function syncSelectedHuntInUrl(huntId) {
   window.history.replaceState({}, "", url.toString());
 }
 
-function getSelectedHunt(state) {
-  return (
-    state.library.hunts.find((hunt) => hunt.id === state.selectedHuntId) ||
-    state.library.hunts.find((hunt) => hunt.id === state.library.activeHuntId) ||
-    state.library.hunts[0]
-  );
+function applyQuestionFieldChange(question, field, value) {
+  if (field === "answers") {
+    question.answers = splitAnswers(value);
+    return;
+  }
+
+  question[field] = value;
 }
 
-function normalizeLibraryData(rawLibrary) {
-  const rawHunts = Array.isArray(rawLibrary?.hunts) ? rawLibrary.hunts : [];
-  const hunts = rawHunts.length
-    ? rawHunts.map((hunt, index) => normalizeHunt(hunt, index))
-    : [createBlankHunt([])];
-  const uniqueHunts = ensureUniqueHuntIds(hunts);
-  const activeHuntId = uniqueHunts.some((hunt) => hunt.id === rawLibrary?.activeHuntId)
-    ? rawLibrary.activeHuntId
-    : uniqueHunts[0].id;
+function getQuestionFromEvent(state, event) {
+  const questionNumber = Number(event.target.dataset.questionNumber);
+  const field = event.target.dataset.questionField;
 
-  return {
-    activeHuntId,
-    hunts: uniqueHunts,
-  };
+  if (!field || !questionNumber) {
+    return null;
+  }
+
+  return state.selectedQuestions.find((question) => question.number === questionNumber) || null;
 }
 
-function normalizeHunt(rawHunt, index) {
-  const id = sanitizeHuntId(rawHunt?.id || rawHunt?.name || `hunt-${index + 1}`);
-  const rawQuestions = Array.isArray(rawHunt?.questions) ? rawHunt.questions : [];
-  const questionCount = Math.max(rawQuestions.length, DEFAULT_QUESTION_COUNT, 1);
-  const questions = Array.from(
-    { length: Math.min(questionCount, MAX_STATIC_QUESTION_PAGES) },
-    (_, indexNumber) => {
-      const questionNumber = indexNumber + 1;
-      const rawQuestion = rawQuestions.find((item) => Number(item.number) === questionNumber);
-      return normalizeQuestion(rawQuestion, questionNumber);
+function scheduleSave(state, key, saveFn, elements, successMessage) {
+  window.clearTimeout(state.saveTimers.get(key));
+
+  const timer = window.setTimeout(async () => {
+    try {
+      await saveFn();
+      elements.saveStatus.textContent = successMessage;
+    } catch (error) {
+      elements.saveStatus.textContent = error.message || "Could not save changes online.";
     }
+  }, 500);
+
+  state.saveTimers.set(key, timer);
+}
+
+function getLegacyLocalLibrary() {
+  const rawDraft = window.localStorage.getItem(LEGACY_DRAFT_STORAGE_KEY);
+
+  if (!rawDraft) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(rawDraft);
+    return normalizeLegacyLibrary(parsed);
+  } catch (error) {
+    return null;
+  }
+}
+
+function normalizeLegacyLibrary(rawLibrary) {
+  const hunts = Array.isArray(rawLibrary?.hunts) ? rawLibrary.hunts : [];
+
+  return {
+    activeHuntId: rawLibrary?.activeHuntId || "",
+    hunts: hunts.map((hunt, huntIndex) => ({
+      name: hunt?.name?.trim() || `Imported Hunt ${huntIndex + 1}`,
+      description: hunt?.description?.trim() || "",
+      questions: Array.isArray(hunt?.questions)
+        ? hunt.questions
+            .map((question, index) => ({
+              number: Number(question?.number) || index + 1,
+              question: question?.question || `Imported question ${index + 1}`,
+              answers: Array.isArray(question?.answers) ? question.answers : [],
+              clue_title: question?.clueTitle || "Clue unlocked",
+              clue: question?.clue || "",
+            }))
+            .sort((first, second) => first.number - second.number)
+        : [],
+    })),
+  };
+}
+
+async function importLegacyLibrary(ownerId, legacyLibrary) {
+  let importedCount = 0;
+
+  for (const legacyHunt of legacyLibrary.hunts) {
+    const { data: hunt, error } = await supabaseClient
+      .from("hunts")
+      .insert({
+        owner_id: ownerId,
+        name: legacyHunt.name,
+        description: legacyHunt.description,
+        is_default: false,
+        is_published: true,
+      })
+      .select()
+      .single();
+
+    if (error || !hunt) {
+      continue;
+    }
+
+    const questions = legacyHunt.questions
+      .filter((question) => question.number <= MAX_STATIC_QUESTION_PAGES)
+      .map((question) => ({
+        hunt_id: hunt.id,
+        number: question.number,
+        question: question.question,
+        answers: question.answers,
+        clue_title: question.clue_title,
+        clue: question.clue,
+      }));
+
+    await supabaseClient.from("questions").insert(questions);
+    importedCount += 1;
+  }
+
+  return importedCount;
+}
+
+function createSupabaseClient() {
+  if (!window.supabase || !window.APP_CONFIG?.supabaseUrl || !window.APP_CONFIG?.supabasePublishableKey) {
+    return null;
+  }
+
+  return window.supabase.createClient(
+    window.APP_CONFIG.supabaseUrl,
+    window.APP_CONFIG.supabasePublishableKey
   );
-
-  return {
-    id: id || `hunt-${index + 1}`,
-    name: rawHunt?.name?.trim() || `Hunt ${index + 1}`,
-    description: rawHunt?.description?.trim() || "",
-    questions,
-  };
-}
-
-function normalizeQuestion(rawQuestion, questionNumber) {
-  return {
-    number: questionNumber,
-    question: rawQuestion?.question ?? `Add the question for step ${questionNumber}.`,
-    answers: Array.isArray(rawQuestion?.answers)
-      ? rawQuestion.answers.map((answer) => String(answer).trim()).filter(Boolean)
-      : [],
-    clueTitle: rawQuestion?.clueTitle ?? "Clue unlocked",
-    clue: rawQuestion?.clue ?? "Add the clue for the next QR code location.",
-  };
-}
-
-function createBlankHunt(existingHunts) {
-  return {
-    id: generateUniqueHuntId("new-hunt", existingHunts),
-    name: "New Hunt",
-    description: "Add teacher notes or class details here.",
-    questions: Array.from({ length: DEFAULT_QUESTION_COUNT }, (_, index) =>
-      createQuestion(index + 1)
-    ),
-  };
-}
-
-function createQuestion(questionNumber) {
-  return normalizeQuestion(null, questionNumber);
-}
-
-function ensureUniqueHuntIds(hunts) {
-  const seen = [];
-
-  return hunts.map((hunt) => {
-    const nextHunt = {
-      ...hunt,
-      id: generateUniqueHuntId(hunt.id, seen),
-    };
-
-    seen.push(nextHunt);
-    return nextHunt;
-  });
-}
-
-function questionEditorMarkup(question) {
-  return `
-    <article class="question-editor-card">
-      <div class="question-editor-head">
-        <span class="question-chip">Question ${question.number}</span>
-      </div>
-
-      <label class="field-group">
-        <span class="label">Question text</span>
-        <textarea
-          class="qr-textarea"
-          rows="3"
-          data-question-field="question"
-          data-question-number="${question.number}"
-        >${escapeHtml(question.question)}</textarea>
-      </label>
-
-      <label class="field-group">
-        <span class="label">Accepted answers</span>
-        <input
-          class="answer-input"
-          type="text"
-          value="${escapeHtml(question.answers.join(", "))}"
-          data-question-field="answers"
-          data-question-number="${question.number}"
-        />
-      </label>
-
-      <label class="field-group">
-        <span class="label">Clue title</span>
-        <input
-          class="answer-input"
-          type="text"
-          value="${escapeHtml(question.clueTitle)}"
-          data-question-field="clueTitle"
-          data-question-number="${question.number}"
-        />
-      </label>
-
-      <label class="field-group">
-        <span class="label">Hint or clue for the next QR code</span>
-        <textarea
-          class="qr-textarea"
-          rows="3"
-          data-question-field="clue"
-          data-question-number="${question.number}"
-        >${escapeHtml(question.clue)}</textarea>
-      </label>
-    </article>
-  `;
-}
-
-function buildPreviewUrl(huntId, questionNumber) {
-  return `q${questionNumber}.html?hunt=${encodeURIComponent(huntId)}&preview=1`;
-}
-
-function populateQuestionSelect(questionSelect, questionCount) {
-  questionSelect.innerHTML = Array.from({ length: questionCount }, (_, index) => {
-    const number = index + 1;
-    return `<option value="${number}">Question ${number}</option>`;
-  }).join("");
 }
 
 function initializeBaseUrl(baseUrlInput) {
@@ -983,21 +1175,22 @@ function resolveQuestionQrValue(rawValue, huntId, questionNumber) {
   return upsertSearchParam(value, "hunt", huntId);
 }
 
+function buildPreviewUrl(huntId, questionNumber) {
+  const baseUrl = window.location.protocol === "file:"
+    ? "https://lhomer7.github.io/EduCache/"
+    : normalizeBaseUrl(window.location.href.replace(/hunt-editor\.html?.*$/i, ""));
+  const studentUrl = resolveQuestionQrValue(baseUrl, huntId, questionNumber);
+  return upsertSearchParam(studentUrl, "preview", "1");
+}
+
 function upsertSearchParam(rawValue, key, value) {
   try {
-    const url = new URL(rawValue);
+    const url = new URL(rawValue, window.location.href);
     url.searchParams.set(key, value);
-    url.searchParams.delete("preview");
     return url.toString();
   } catch (error) {
-    const withoutPreview = rawValue
-      .replace(/([?&])preview=1(&|$)/, "$1")
-      .replace(/[?&]$/, "");
-    const cleaned = withoutPreview
-      .replace(new RegExp(`([?&])${key}=[^&]*`), "$1")
-      .replace(/[?&]$/, "");
-    const separator = cleaned.includes("?") ? "&" : "?";
-    return `${cleaned}${separator}${key}=${encodeURIComponent(value)}`;
+    const separator = rawValue.includes("?") ? "&" : "?";
+    return `${rawValue}${separator}${key}=${encodeURIComponent(value)}`;
   }
 }
 
@@ -1047,25 +1240,63 @@ function buildQrFallbackUrl(value, size) {
   return `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(value)}`;
 }
 
-function buildHuntDataFile(library) {
-  const normalizedLibrary = normalizeLibraryData(library);
-  const libraryJson = JSON.stringify(normalizedLibrary, null, 2);
+function questionEditorMarkup(question) {
+  return `
+    <article class="question-editor-card">
+      <div class="question-editor-head">
+        <span class="question-chip">Question ${question.number}</span>
+      </div>
 
-  return `window.HUNT_LIBRARY = ${libraryJson};
+      <label class="field-group">
+        <span class="label">Question text</span>
+        <textarea
+          class="qr-textarea"
+          rows="3"
+          data-question-field="question"
+          data-question-number="${question.number}"
+        >${escapeHtml(question.question)}</textarea>
+      </label>
 
-(function syncLegacyActiveHunt() {
-  const library = window.HUNT_LIBRARY;
-  const activeHunt =
-    library.hunts.find((hunt) => hunt.id === library.activeHuntId) || library.hunts[0];
+      <label class="field-group">
+        <span class="label">Accepted answers</span>
+        <input
+          class="answer-input"
+          type="text"
+          value="${escapeHtml(question.answers.join(", "))}"
+          data-question-field="answers"
+          data-question-number="${question.number}"
+        />
+      </label>
 
-  window.HUNT_DATA = activeHunt ? activeHunt.questions : [];
-})();
-`;
+      <label class="field-group">
+        <span class="label">Clue title</span>
+        <input
+          class="answer-input"
+          type="text"
+          value="${escapeHtml(question.clue_title)}"
+          data-question-field="clue_title"
+          data-question-number="${question.number}"
+        />
+      </label>
+
+      <label class="field-group">
+        <span class="label">Hint or clue for the next QR code</span>
+        <textarea
+          class="qr-textarea"
+          rows="3"
+          data-question-field="clue"
+          data-question-number="${question.number}"
+        >${escapeHtml(question.clue)}</textarea>
+      </label>
+    </article>
+  `;
 }
 
-function librariesMatch(firstLibrary, secondLibrary) {
-  return JSON.stringify(normalizeLibraryData(firstLibrary)) ===
-    JSON.stringify(normalizeLibraryData(secondLibrary));
+function populateQuestionSelect(questionSelect, questionCount) {
+  questionSelect.innerHTML = Array.from({ length: questionCount }, (_, index) => {
+    const number = index + 1;
+    return `<option value="${number}">Question ${number}</option>`;
+  }).join("");
 }
 
 function splitAnswers(value) {
@@ -1075,54 +1306,8 @@ function splitAnswers(value) {
     .filter(Boolean);
 }
 
-function sanitizeHuntId(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
-function generateUniqueHuntId(baseId, hunts, excludeId) {
-  const safeBaseId = sanitizeHuntId(baseId) || "hunt";
-  const takenIds = new Set(
-    hunts
-      .map((hunt) => hunt.id)
-      .filter((huntId) => huntId && huntId !== excludeId)
-  );
-
-  if (!takenIds.has(safeBaseId)) {
-    return safeBaseId;
-  }
-
-  let suffix = 2;
-
-  while (takenIds.has(`${safeBaseId}-${suffix}`)) {
-    suffix += 1;
-  }
-
-  return `${safeBaseId}-${suffix}`;
-}
-
 function normalizeAnswer(value) {
   return String(value).trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-function cloneData(value) {
-  return JSON.parse(JSON.stringify(value));
-}
-
-function downloadTextFile(filename, contents) {
-  const blob = new Blob([contents], { type: "text/javascript;charset=utf-8" });
-  const link = document.createElement("a");
-
-  link.href = URL.createObjectURL(blob);
-  link.download = filename;
-  link.click();
-
-  window.setTimeout(() => {
-    URL.revokeObjectURL(link.href);
-  }, 1000);
 }
 
 function escapeHtml(value) {
@@ -1132,4 +1317,12 @@ function escapeHtml(value) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+function showConfigurationError() {
+  const target = document.querySelector("[data-home-status]") || document.querySelector("[data-save-status]");
+
+  if (target) {
+    target.textContent = "Supabase is not configured correctly on this page.";
+  }
 }

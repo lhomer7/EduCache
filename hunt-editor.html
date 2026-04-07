@@ -6,8 +6,9 @@
     <title>Hunt Editor</title>
     <meta name="theme-color" content="#1c7ed6" />
     <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <script src="hunt-data.js" defer></script>
+    <script src="supabase-config.js" defer></script>
     <script src="script.js" defer></script>
   </head>
   <body>
@@ -21,6 +22,7 @@
           </div>
         </div>
 
+        <p class="status-pill" data-editor-user></p>
         <div class="hunt-library-list" data-hunt-list></div>
 
         <div class="sidebar-actions">
@@ -32,6 +34,9 @@
           </button>
           <button class="secondary-action" type="button" data-delete-hunt>
             Delete
+          </button>
+          <button class="secondary-action" type="button" data-sign-out>
+            Sign out
           </button>
         </div>
       </aside>
@@ -45,24 +50,15 @@
             </p>
           </div>
 
-          <div class="hero-actions">
-            <button class="primary-action" type="button" data-set-active-hunt>
-              Set as default hunt
-            </button>
-            <button class="secondary-action" type="button" data-download-library>
-              Download hunt-data.js
-            </button>
-          </div>
-
           <p class="footer-note" data-save-status>
-            Local teacher edits save in this browser.
+            Changes save online from this page.
           </p>
         </section>
 
         <section class="management-card">
           <div class="section-heading">
             <h2>Hunt details</h2>
-            <p>Update the name, hunt ID, and teacher notes for this hunt.</p>
+            <p>Update the name and teacher notes for this hunt.</p>
           </div>
 
           <div class="meta-grid">
@@ -72,8 +68,8 @@
             </label>
 
             <label class="field-group">
-              <span class="label">Hunt ID for QR links</span>
-              <input class="answer-input" type="text" data-hunt-id />
+              <span class="label">Online hunt code</span>
+              <input class="answer-input" type="text" data-hunt-code readonly />
             </label>
 
             <label class="field-group field-group-wide">
@@ -91,21 +87,21 @@
           <div class="section-heading">
             <h2>QR code maker</h2>
             <p>
-              Generate QR codes for the selected hunt. The links stay locked to
-              this hunt ID.
+              Generate QR codes for the selected hunt. Every QR is tied to this
+              hunt only.
             </p>
           </div>
 
-            <div class="qr-tool-grid">
-              <div class="qr-controls">
-                <p class="status-pill" data-qr-hunt-label>
-                  QR codes will use the selected hunt.
-                </p>
+          <div class="qr-tool-grid">
+            <div class="qr-controls">
+              <p class="status-pill" data-qr-hunt-label>
+                QR codes will use the selected hunt.
+              </p>
 
-                <label class="label" for="qr-base-url">Public site URL or full page URL</label>
-                <input
-                  class="answer-input"
-                  id="qr-base-url"
+              <label class="label" for="qr-base-url">Public site URL or full page URL</label>
+              <input
+                class="answer-input"
+                id="qr-base-url"
                 type="text"
                 value="https://lhomer7.github.io/EduCache/"
                 data-qr-base-url
@@ -117,7 +113,7 @@
               <div class="qr-live-card">
                 <p class="label">Current question preview</p>
                 <p class="qr-live-title" data-qr-question-title>
-                  Choose a question to preview its current draft text.
+                  Choose a question to preview its current saved text.
                 </p>
                 <p class="qr-live-copy" data-qr-question-clue></p>
               </div>
@@ -165,7 +161,7 @@
         <section class="preview-card">
           <div class="section-heading">
             <h2>Teacher preview links</h2>
-            <p>Open these to test the selected hunt before publishing.</p>
+            <p>Open these to test the selected hunt before handing out the QR code.</p>
           </div>
 
           <div class="page-grid" data-preview-links></div>

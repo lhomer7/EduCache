@@ -271,7 +271,8 @@ a {
 .question-editor-card,
 .editor-hero-card,
 .editor-sidebar,
-.editor-main {
+.editor-main,
+.auth-card {
   padding: 1.1rem;
   border-radius: var(--radius-lg);
   background: var(--surface-strong);
@@ -286,9 +287,21 @@ a {
 
 .home-action-card,
 .hunt-overview-card,
-.editor-hero-card {
+.editor-hero-card,
+.auth-card {
   display: grid;
   gap: 0.9rem;
+}
+
+.auth-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(16rem, 0.9fr);
+  gap: 1rem;
+}
+
+.auth-form {
+  display: grid;
+  gap: 0.85rem;
 }
 
 .hunt-home-grid {
@@ -776,6 +789,7 @@ a {
     place-items: start center;
   }
 
+  .auth-layout,
   .editor-shell,
   .management-layout,
   .meta-grid,

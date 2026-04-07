@@ -6,7 +6,8 @@
     <title>QR Code Hunt Dashboard</title>
     <meta name="theme-color" content="#1c7ed6" />
     <link rel="stylesheet" href="styles.css" />
-    <script src="hunt-data.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-config.js" defer></script>
     <script src="script.js" defer></script>
   </head>
   <body>
@@ -14,64 +15,92 @@
       <section class="intro-card">
         <div class="card-top">
           <span class="eyebrow">Teacher Home</span>
-          <h1>Manage your QR code hunts in one place</h1>
+          <h1>Manage your QR code hunts online</h1>
           <p class="lead">
-            Start here to create a hunt, open an editor, and download the latest
-            <strong>hunt-data.js</strong> file when you are ready to publish.
+            Sign in as the teacher, create hunts, edit questions online, and
+            let student QR pages update from Supabase instead of local files.
           </p>
         </div>
 
         <div class="intro-body">
-          <div class="status-strip">
-            <p class="status-pill" data-home-status>
-              Loading your saved hunts...
-            </p>
-            <p class="status-pill">
-              Students should only open the QR question links
-            </p>
-          </div>
+          <section class="auth-layout" data-auth-view>
+            <div class="auth-card">
+              <div class="section-heading">
+                <h2>Teacher sign in</h2>
+                <p>Use the teacher email and password you created in Supabase.</p>
+              </div>
 
-          <div class="teacher-note">
-            <h2>How it works</h2>
-            <p>
-              Each hunt has its own editor page. Students never edit anything,
-              they only open the question pages linked by your QR codes.
-            </p>
-          </div>
+              <form class="auth-form" data-login-form>
+                <label class="field-group">
+                  <span class="label">Email</span>
+                  <input class="answer-input" type="email" data-login-email required />
+                </label>
 
-          <section class="home-action-card">
-            <div class="section-heading">
-              <h2>Quick actions</h2>
-              <p>Create a new hunt or download the current published file.</p>
-            </div>
+                <label class="field-group">
+                  <span class="label">Password</span>
+                  <input class="answer-input" type="password" data-login-password required />
+                </label>
 
-            <div class="hero-actions">
-              <button class="primary-action" type="button" data-create-hunt>
-                New hunt
-              </button>
-              <button class="secondary-action" type="button" data-download-library>
-                Download hunt-data.js
-              </button>
-              <button class="secondary-action" type="button" data-reset-drafts>
-                Reset local edits
-              </button>
-            </div>
+                <button class="primary-action" type="submit">Sign in</button>
+              </form>
 
-            <p class="footer-note" data-home-save-status>
-              Local edits are saved in this browser until you publish them.
-            </p>
-          </section>
-
-          <section class="hunt-overview-card">
-            <div class="section-heading">
-              <h2>Your hunts</h2>
-              <p>
-                Click into a hunt to edit its questions, QR links, preview
-                pages, and settings.
+              <p class="footer-note" data-auth-status>
+                Sign in to load your online hunts.
               </p>
             </div>
 
-            <div class="hunt-home-grid" data-home-hunt-list></div>
+            <div class="teacher-note">
+              <h2>Before students scan</h2>
+              <p>
+                Student pages only read hunts and questions that have been saved
+                to Supabase. This teacher login is the only place where editing
+                happens.
+              </p>
+            </div>
+          </section>
+
+          <section class="is-hidden" data-dashboard-view>
+            <div class="status-strip">
+              <p class="status-pill" data-home-status>
+                Loading your online hunts...
+              </p>
+              <p class="status-pill" data-user-email></p>
+            </div>
+
+            <section class="home-action-card">
+              <div class="section-heading">
+                <h2>Quick actions</h2>
+                <p>Create a new hunt, import old local hunts once, or sign out.</p>
+              </div>
+
+              <div class="hero-actions">
+                <button class="primary-action" type="button" data-create-hunt>
+                  New hunt
+                </button>
+                <button class="secondary-action" type="button" data-import-local>
+                  Import local hunts
+                </button>
+                <button class="secondary-action" type="button" data-sign-out>
+                  Sign out
+                </button>
+              </div>
+
+              <p class="footer-note" data-home-save-status>
+                Your hunts are now saved online in Supabase.
+              </p>
+            </section>
+
+            <section class="hunt-overview-card">
+              <div class="section-heading">
+                <h2>Your hunts</h2>
+                <p>
+                  Open a hunt to edit its questions, QR links, and teacher
+                  previews.
+                </p>
+              </div>
+
+              <div class="hunt-home-grid" data-home-hunt-list></div>
+            </section>
           </section>
         </div>
       </section>
