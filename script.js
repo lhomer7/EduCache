@@ -37,7 +37,6 @@ async function setupTeacherHome() {
     homeSaveStatus: document.querySelector("[data-home-save-status]"),
     huntList: document.querySelector("[data-home-hunt-list]"),
     createHunt: document.querySelector("[data-create-hunt]"),
-    importLocal: document.querySelector("[data-import-local]"),
     signOut: document.querySelector("[data-sign-out]"),
   };
 
@@ -81,37 +80,6 @@ async function setupTeacherHome() {
     window.location.href = `hunt-editor.html?hunt=${encodeURIComponent(createdHunt.id)}`;
   });
 
-  elements.importLocal.addEventListener("click", async () => {
-    const user = await getCurrentUser();
-
-    if (!user) {
-      await renderTeacherHome(elements);
-      return;
-    }
-
-    const legacyLibrary = getLegacyLocalLibrary();
-
-    if (!legacyLibrary || legacyLibrary.hunts.length === 0) {
-      elements.homeSaveStatus.textContent =
-        "There are no old local hunts to import from this browser.";
-      return;
-    }
-
-    elements.homeSaveStatus.textContent = "Importing old local hunts into Supabase...";
-    const importedCount = await importLegacyLibrary(user.id, legacyLibrary);
-
-    if (importedCount === 0) {
-      elements.homeSaveStatus.textContent = "The import did not create any hunts.";
-      return;
-    }
-
-    elements.homeSaveStatus.textContent = `${importedCount} hunt${
-      importedCount === 1 ? "" : "s"
-    } imported from the old local version.`;
-    window.localStorage.removeItem(LEGACY_DRAFT_STORAGE_KEY);
-    await renderTeacherHome(elements);
-  });
-
   elements.signOut.addEventListener("click", async () => {
     await supabaseClient.auth.signOut();
     await renderTeacherHome(elements);
@@ -151,16 +119,10 @@ async function renderTeacherHome(elements) {
   elements.userEmail.textContent = user.email || "Signed in";
 
   const hunts = await fetchTeacherHunts();
-  const legacyLibrary = getLegacyLocalLibrary();
-  const hasLegacyHunts = Boolean(legacyLibrary && legacyLibrary.hunts.length);
-
-  elements.importLocal.disabled = !hasLegacyHunts;
   elements.homeStatus.textContent = `${hunts.length} hunt${
     hunts.length === 1 ? "" : "s"
   } saved online.`;
-  elements.homeSaveStatus.textContent = hasLegacyHunts && hunts.length === 0
-    ? "Old local hunts were found in this browser. You can import them once into Supabase."
-    : "Your hunts are now saved online in Supabase.";
+  elements.homeSaveStatus.textContent = "Your hunts are now saved online in Supabase.";
 
   if (hunts.length === 0) {
     elements.huntList.innerHTML = `
@@ -168,7 +130,7 @@ async function renderTeacherHome(elements) {
         <div class="hunt-home-copy">
           <p class="hunt-home-tag">No hunts yet</p>
           <h3>Create your first online hunt</h3>
-          <p>Use the New hunt button to start building a QR code hunt in Supabase.</p>
+          <p>Use the Open Hunt Manager button to start building a QR code hunt in Supabase.</p>
         </div>
       </article>
     `;
