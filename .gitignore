@@ -1,0 +1,10 @@
+node_modules/
+android/
+ios/
+mobile-web/
+dist/
+build/
+.gradle/
+.idea/
+local.properties
+package-lock.json

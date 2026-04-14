@@ -2,6 +2,7 @@ const DEFAULT_QUESTION_COUNT = 10;
 const MAX_STATIC_QUESTION_PAGES = 20;
 const LEGACY_DRAFT_STORAGE_KEY = "qr-hunt-library-draft";
 const PROGRESS_STORAGE_PREFIX = "qr-hunt-progress";
+const resetVersionCache = {};
 
 const supabaseClient = createSupabaseClient();
 
@@ -296,7 +297,7 @@ async function setupHuntEditor() {
     window.location.href = "index.html";
   });
 
-  elements.huntName.addEventListener("input", () => {
+  elements.huntName.addEventListener("input", async () => {
     const selectedHunt = getSelectedHunt(state);
 
     if (!selectedHunt) {
@@ -320,7 +321,7 @@ async function setupHuntEditor() {
       elements,
       `Saved "${selectedHunt.name || "Untitled Hunt"}" online.`
     );
-    renderSelectedHunt(state, elements);
+    await renderSelectedHunt(state, elements);
   });
 
   elements.huntDescription.addEventListener("input", () => {
@@ -415,7 +416,7 @@ async function setupHuntEditor() {
     }
 
     state.selectedQuestions.push(normalizeRemoteQuestion(data));
-    renderSelectedHunt(state, elements);
+    await renderSelectedHunt(state, elements);
     renderPreviewLinks(elements.previewLinks, state.selectedQuestions, selectedHunt.id);
     populateQuestionSelect(elements.qrQuestionSelect, state.selectedQuestions.length);
     renderQrForSelectedHunt(state, elements);
@@ -438,24 +439,30 @@ async function setupHuntEditor() {
     }
 
     state.selectedQuestions.pop();
-    clearProgressForHunt(selectedHunt.id, state.selectedQuestions.length + 1);
-    renderSelectedHunt(state, elements);
+    await renderSelectedHunt(state, elements);
     renderPreviewLinks(elements.previewLinks, state.selectedQuestions, selectedHunt.id);
     populateQuestionSelect(elements.qrQuestionSelect, state.selectedQuestions.length);
     renderQrForSelectedHunt(state, elements);
     elements.saveStatus.textContent = `Question ${lastQuestion.number} removed online.`;
   });
 
-  elements.resetProgress.addEventListener("click", () => {
+  elements.resetProgress.addEventListener("click", async () => {
     const selectedHunt = getSelectedHunt(state);
 
     if (!selectedHunt) {
       return;
     }
 
-    clearProgressForHunt(selectedHunt.id, state.selectedQuestions.length);
-    renderSelectedHunt(state, elements);
-    elements.saveStatus.textContent = `Saved device progress cleared for "${selectedHunt.name}".`;
+    elements.resetProgress.disabled = true;
+    elements.saveStatus.textContent = `Resetting saved progress for "${selectedHunt.name}"...`;
+
+    const didReset = await clearProgressForHunt(selectedHunt.id);
+
+    await renderSelectedHunt(state, elements);
+    elements.resetProgress.disabled = false;
+    elements.saveStatus.textContent = didReset
+      ? `Saved progress reset for "${selectedHunt.name}" on every device.`
+      : `Could not reset saved progress for "${selectedHunt.name}".`;
   });
 
   elements.qrGenerate.addEventListener("click", () => {
@@ -499,10 +506,10 @@ async function refreshEditorState(state, elements) {
   }
 
   state.selectedQuestions = await fetchQuestionsForHunt(state.selectedHuntId);
-  renderHuntEditorPage(state, elements);
+  await renderHuntEditorPage(state, elements);
 }
 
-function renderHuntEditorPage(state, elements) {
+async function renderHuntEditorPage(state, elements) {
   const selectedHunt = getSelectedHunt(state);
 
   renderSidebarHunts(state.hunts, state.selectedHuntId, elements.huntList);
@@ -511,7 +518,7 @@ function renderHuntEditorPage(state, elements) {
     return;
   }
 
-  renderSelectedHunt(state, elements);
+  await renderSelectedHunt(state, elements);
   renderPreviewLinks(elements.previewLinks, state.selectedQuestions, selectedHunt.id);
   populateQuestionSelect(elements.qrQuestionSelect, state.selectedQuestions.length);
   renderQrForSelectedHunt(state, elements);
@@ -534,14 +541,12 @@ function renderSidebarHunts(hunts, selectedHuntId, huntList) {
     .join("");
 }
 
-function renderSelectedHunt(state, elements) {
+async function renderSelectedHunt(state, elements) {
   const selectedHunt = getSelectedHunt(state);
 
   if (!selectedHunt) {
     return;
   }
-
-  const solvedCount = getSolvedCount(selectedHunt.id, state.selectedQuestions.length);
 
   elements.selectedHuntName.textContent = selectedHunt.name;
   elements.selectedHuntNote.textContent =
@@ -659,20 +664,20 @@ async function setupQuestionPage() {
     elements,
     previewMode
   );
-  syncProgress(
+  await syncProgress(
     elements.progressLabel,
     elements.progressBar,
     questionData.hunt.id,
     questionData.questions.length
   );
 
-  if (window.localStorage.getItem(await storageKey(questionData.hunt.id, questionNumber)) === "solved") {
-    markSolved(elements, questionData.hunt.id, questionData.questions.length);
+  if (await isQuestionSolved(questionData.hunt.id, questionNumber)) {
+    await markSolved(elements, questionData.hunt.id, questionData.questions.length);
   } else {
     elements.input.focus();
   }
 
-  elements.form.addEventListener("submit", (event) => {
+  elements.form.addEventListener("submit", async (event) => {
     event.preventDefault();
 
     const submittedAnswer = normalizeAnswer(elements.input.value);
@@ -684,8 +689,8 @@ async function setupQuestionPage() {
     }
 
     if (acceptedAnswers.includes(submittedAnswer)) {
-      window.localStorage.setItem(await storageKey(questionData.hunt.id, questionNumber), "solved");
-      markSolved(elements, questionData.hunt.id, questionData.questions.length);
+      await markQuestionSolved(questionData.hunt.id, questionNumber);
+      await markSolved(elements, questionData.hunt.id, questionData.questions.length);
       return;
     }
 
@@ -790,19 +795,19 @@ function buildQuestionChrome(huntId) {
   };
 }
 
-function markSolved(elements, huntId, totalQuestions) {
+async function markSolved(elements, huntId, totalQuestions) {
   elements.input.value = "";
   elements.input.readOnly = true;
   elements.submitButton.disabled = true;
   elements.submitButton.textContent = "Unlocked";
   elements.cluePanel.classList.add("is-visible");
   setFeedback(elements.feedback, "Correct! Your clue is now unlocked.", "is-success");
-  syncProgress(elements.progressLabel, elements.progressBar, huntId, totalQuestions);
+  await syncProgress(elements.progressLabel, elements.progressBar, huntId, totalQuestions);
   elements.cluePanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
-function syncProgress(progressLabel, progressBar, huntId, totalQuestions) {
-  const solvedCount = getSolvedCount(huntId, totalQuestions);
+async function syncProgress(progressLabel, progressBar, huntId, totalQuestions) {
+  const solvedCount = await getSolvedCount(huntId, totalQuestions);
   const percentage = totalQuestions ? (solvedCount / totalQuestions) * 100 : 0;
 
   progressLabel.textContent = `${solvedCount} of ${totalQuestions} questions unlocked on this device`;
@@ -815,24 +820,48 @@ function setFeedback(feedback, message, className) {
   feedback.classList.add(className);
 }
 
-async function storageKey(huntId, questionNumber) {
+function storageKey(huntId, questionNumber, version = 0) {
+  return `${PROGRESS_STORAGE_PREFIX}::${huntId}::v${version}::q${questionNumber}`;
+}
 
-  const { data } = await supabaseClient
+async function getResetVersion(huntId) {
+  if (resetVersionCache[huntId] != null) {
+    return resetVersionCache[huntId];
+  }
+
+  const { data, error } = await supabaseClient
     .from("hunts")
     .select("reset_version")
     .eq("id", huntId)
     .single();
 
-  const version = data?.reset_version || 0;
+  if (error) {
+    console.error(error);
+  }
 
-  return `${PROGRESS_STORAGE_PREFIX}::${huntId}::v${version}::q${questionNumber}`;
+  const version = data?.reset_version || 0;
+  resetVersionCache[huntId] = version;
+  return version;
 }
 
-function getSolvedCount(huntId, totalQuestions) {
+async function markQuestionSolved(huntId, questionNumber) {
+  const version = await getResetVersion(huntId);
+
+  window.localStorage.setItem(storageKey(huntId, questionNumber, version), "solved");
+}
+
+async function isQuestionSolved(huntId, questionNumber) {
+  const version = await getResetVersion(huntId);
+
+  return window.localStorage.getItem(storageKey(huntId, questionNumber, version)) === "solved";
+}
+
+async function getSolvedCount(huntId, totalQuestions) {
+  const version = await getResetVersion(huntId);
   let solvedCount = 0;
 
   for (let questionNumber = 1; questionNumber <= totalQuestions; questionNumber += 1) {
-    if (window.localStorage.getItem(storageKey(huntId, questionNumber)) === "solved") {
+    if (window.localStorage.getItem(storageKey(huntId, questionNumber, version)) === "solved") {
       solvedCount += 1;
     }
   }
@@ -840,32 +869,21 @@ function getSolvedCount(huntId, totalQuestions) {
   return solvedCount;
 }
 
-async function clearProgressForHunt(huntId, totalQuestions) {
+async function clearProgressForHunt(huntId) {
+  const currentVersion = await getResetVersion(huntId);
 
-  const { data } = await supabaseClient
-    .from("hunts")
-    .select("reset_version")
-    .eq("id", huntId)
-    .single();
-
-  const currentVersion = data?.reset_version || 0;
-
-  await supabaseClient
+  const { error } = await supabaseClient
     .from("hunts")
     .update({ reset_version: currentVersion + 1 })
     .eq("id", huntId);
 
-}
-
-  // Increase hunt reset version so all devices start fresh
-  const resetKey = `qr-hunt-reset-version::${huntId}`;
-  const currentVersion = Number(localStorage.getItem(resetKey) || "0");
-  localStorage.setItem(resetKey, currentVersion + 1);
-
-  // Remove existing solved flags on this device
-  for (let questionNumber = 1; questionNumber <= totalQuestions; questionNumber += 1) {
-    window.localStorage.removeItem(storageKey(huntId, questionNumber));
+  if (error) {
+    console.error(error);
+    return false;
   }
+
+  resetVersionCache[huntId] = currentVersion + 1;
+  return true;
 }
 
 async function fetchTeacherHunts() {

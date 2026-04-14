@@ -1,0 +1,19 @@
+{
+  "name": "educache-hunt-builder",
+  "version": "1.0.0",
+  "private": true,
+  "description": "EduCache Hunt Builder mobile app shell powered by Capacitor.",
+  "scripts": {
+    "prepare:mobile": "powershell -ExecutionPolicy Bypass -File scripts/prepare-mobile.ps1",
+    "cap:sync": "npm run prepare:mobile && npx cap sync",
+    "cap:add:android": "npm run prepare:mobile && npx cap add android",
+    "cap:open:android": "npm run prepare:mobile && npx cap sync android && npx cap open android"
+  },
+  "dependencies": {
+    "@capacitor/core": "^8.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/cli": "^8.0.0"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "appId": "com.educache.huntbuilder",
+  "appName": "EduCache Hunt Builder",
+  "webDir": "mobile-web",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https"
+  }
+}
