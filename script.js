@@ -816,7 +816,11 @@ function setFeedback(feedback, message, className) {
 }
 
 function storageKey(huntId, questionNumber) {
-  return `${PROGRESS_STORAGE_PREFIX}::${huntId}::q${questionNumber}`;
+
+  const resetVersion =
+    localStorage.getItem(`qr-hunt-reset-version::${huntId}`) || "0";
+
+  return `${PROGRESS_STORAGE_PREFIX}::${huntId}::v${resetVersion}::q${questionNumber}`;
 }
 
 function getSolvedCount(huntId, totalQuestions) {
@@ -832,6 +836,13 @@ function getSolvedCount(huntId, totalQuestions) {
 }
 
 function clearProgressForHunt(huntId, totalQuestions) {
+
+  // Increase hunt reset version so all devices start fresh
+  const resetKey = `qr-hunt-reset-version::${huntId}`;
+  const currentVersion = Number(localStorage.getItem(resetKey) || "0");
+  localStorage.setItem(resetKey, currentVersion + 1);
+
+  // Remove existing solved flags on this device
   for (let questionNumber = 1; questionNumber <= totalQuestions; questionNumber += 1) {
     window.localStorage.removeItem(storageKey(huntId, questionNumber));
   }
