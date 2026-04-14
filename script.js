@@ -552,7 +552,7 @@ function renderSelectedHunt(state, elements) {
   elements.deleteHunt.disabled = state.hunts.length <= 1;
   elements.removeQuestion.disabled = state.selectedQuestions.length <= 1;
   elements.addQuestion.disabled = state.selectedQuestions.length >= MAX_STATIC_QUESTION_PAGES;
-  elements.resetProgress.disabled = solvedCount === 0;
+  elements.resetProgress.disabled = false;
   elements.qrHuntLabel.textContent =
     `QR codes currently point to "${selectedHunt.name}".`;
   elements.questionEditor.innerHTML = state.selectedQuestions
