@@ -666,7 +666,7 @@ async function setupQuestionPage() {
     questionData.questions.length
   );
 
-  if (window.localStorage.getItem(storageKey(questionData.hunt.id, questionNumber)) === "solved") {
+  if (window.localStorage.getItem(await storageKey(questionData.hunt.id, questionNumber)) === "solved") {
     markSolved(elements, questionData.hunt.id, questionData.questions.length);
   } else {
     elements.input.focus();
@@ -684,7 +684,7 @@ async function setupQuestionPage() {
     }
 
     if (acceptedAnswers.includes(submittedAnswer)) {
-      window.localStorage.setItem(storageKey(questionData.hunt.id, questionNumber), "solved");
+      window.localStorage.setItem(await storageKey(questionData.hunt.id, questionNumber), "solved");
       markSolved(elements, questionData.hunt.id, questionData.questions.length);
       return;
     }
@@ -815,12 +815,17 @@ function setFeedback(feedback, message, className) {
   feedback.classList.add(className);
 }
 
-function storageKey(huntId, questionNumber) {
+async function storageKey(huntId, questionNumber) {
 
-  const resetVersion =
-    localStorage.getItem(`qr-hunt-reset-version::${huntId}`) || "0";
+  const { data } = await supabaseClient
+    .from("hunts")
+    .select("reset_version")
+    .eq("id", huntId)
+    .single();
 
-  return `${PROGRESS_STORAGE_PREFIX}::${huntId}::v${resetVersion}::q${questionNumber}`;
+  const version = data?.reset_version || 0;
+
+  return `${PROGRESS_STORAGE_PREFIX}::${huntId}::v${version}::q${questionNumber}`;
 }
 
 function getSolvedCount(huntId, totalQuestions) {
@@ -835,7 +840,22 @@ function getSolvedCount(huntId, totalQuestions) {
   return solvedCount;
 }
 
-function clearProgressForHunt(huntId, totalQuestions) {
+async function clearProgressForHunt(huntId, totalQuestions) {
+
+  const { data } = await supabaseClient
+    .from("hunts")
+    .select("reset_version")
+    .eq("id", huntId)
+    .single();
+
+  const currentVersion = data?.reset_version || 0;
+
+  await supabaseClient
+    .from("hunts")
+    .update({ reset_version: currentVersion + 1 })
+    .eq("id", huntId);
+
+}
 
   // Increase hunt reset version so all devices start fresh
   const resetKey = `qr-hunt-reset-version::${huntId}`;
